@@ -612,7 +612,7 @@ function App(){
     fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"x-api-key":profile.anthropic_api_key,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-allow-browser-access":"true"},
-      body:JSON.stringify({model:"claude-haiku-4-5",max_tokens:256,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},{type:"text",text:prompt}]}]})
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:256,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},{type:"text",text:prompt}]}]})
     }).then(function(r){return r.json();}).then(function(data){
       setNutLoading(false);
       if(data.error){
@@ -635,7 +635,7 @@ function App(){
         if(match){try{setNutScan({mode:mode,base64:b64,result:JSON.parse(match[0]),portionMult:1.0});return;}catch(e2){}}
         alert("Could not parse response. Try again.");
       }
-    }).catch(function(e){setNutLoading(false);alert("Error: "+e.message);});
+    }).catch(function(e){setNutLoading(false);alert("Network error — check connection and try again.\n("+e.message+")");});
   }
 
   function logNutritionEntry(entry){
@@ -1074,13 +1074,21 @@ function App(){
         onChange:function(e){
           var file=e.target.files[0];if(!file)return;
           var mode=nutScanModeRef.current;
-          var reader=new FileReader();
-          reader.onloadend=function(){
-            var b64=reader.result.split(",")[1];
+          e.target.value="";
+          var url=URL.createObjectURL(file);
+          var img=new Image();
+          img.onload=function(){
+            URL.revokeObjectURL(url);
+            var MAX=1024;var w=img.width;var h=img.height;
+            if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
+            var canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+            canvas.getContext("2d").drawImage(img,0,0,w,h);
+            var b64=canvas.toDataURL("image/jpeg",0.85).split(",")[1];
             if(!profile||!profile.anthropic_api_key){setPendingScan({b64:b64,mode:mode});setApiKeyModal(true);}
             else callClaudeVision(b64,mode);
           };
-          reader.readAsDataURL(file);e.target.value="";
+          img.onerror=function(){URL.revokeObjectURL(url);alert("Could not load image. Try again.");};
+          img.src=url;
         }
       }),
       h("div",{style:{display:"flex",gap:8,marginBottom:14}},
