@@ -457,6 +457,8 @@ function App(){
   var pendingScanArr=useState(null);var pendingScan=pendingScanArr[0];var setPendingScan=pendingScanArr[1];
   var nutFormArr=useState({name:"",calories:"",protein:"",carbs:"",fat:""});var nutForm=nutFormArr[0];var setNutForm=nutFormArr[1];
   var apiKeyInputArr=useState("");var apiKeyInput=apiKeyInputArr[0];var setApiKeyInput=apiKeyInputArr[1];
+  var apiKeyErrorArr=useState(null);var apiKeyError=apiKeyErrorArr[0];var setApiKeyError=apiKeyErrorArr[1];
+  var apiKeyVisibleArr=useState(false);var apiKeyVisible=apiKeyVisibleArr[0];var setApiKeyVisible=apiKeyVisibleArr[1];
   var showMigrationArr=useState(false);var showMigration=showMigrationArr[0];var setShowMigration=showMigrationArr[1];
   var migratingArr=useState(false);var migrating=migratingArr[0];var setMigrating=migratingArr[1];
   var touchStartX=useRef(null);
@@ -613,6 +615,16 @@ function App(){
       body:JSON.stringify({model:"claude-haiku-4-5",max_tokens:256,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},{type:"text",text:prompt}]}]})
     }).then(function(r){return r.json();}).then(function(data){
       setNutLoading(false);
+      if(data.error){
+        if(data.error.type==="authentication_error"){
+          setProfile(function(p){return Object.assign({},p,{anthropic_api_key:null});});
+          sb.from("profiles").update({anthropic_api_key:null}).eq("id",user.id);
+          setPendingScan({b64:b64,mode:mode});
+          setApiKeyError("Invalid API key — please enter a new one");
+          setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);
+        }else{alert("Claude error: "+(data.error.message||"Unknown error"));}
+        return;
+      }
       var text=data.content&&data.content[0]&&data.content[0].text;
       if(!text){alert("No response from Claude");return;}
       try{
@@ -638,13 +650,16 @@ function App(){
   }
 
   function saveApiKey(){
-    var key=apiKeyInput.trim();if(!key)return;
+    var key=apiKeyInput.trim();
+    if(!key){setApiKeyError("Please enter your API key");return;}
+    if(!key.startsWith("sk-ant-")){setApiKeyError("Key must start with sk-ant-");return;}
+    setApiKeyError(null);
     sb.from("profiles").update({anthropic_api_key:key}).eq("id",user.id).then(function(r){
       if(!r.error){
         setProfile(function(p){return Object.assign({},p,{anthropic_api_key:key});});
-        setApiKeyModal(false);setApiKeyInput("");
+        setApiKeyModal(false);setApiKeyInput("");setApiKeyVisible(false);
         if(pendingScan){callClaudeVision(pendingScan.b64,pendingScan.mode);setPendingScan(null);}
-      }
+      }else{setApiKeyError("Failed to save — check connection and try again");}
     });
   }
 
@@ -1043,9 +1058,11 @@ function App(){
       )
     );
     return h("div",null,
-      h("div",{style:S.header},
-        h("div",{style:S.title},"NUTRITION"),
-        h("div",{style:S.h1},fmtDate(dt))
+      h("div",{style:Object.assign({},S.header,{display:"flex",justifyContent:"space-between",alignItems:"flex-end"})},
+        h("div",null,h("div",{style:S.title},"NUTRITION"),h("div",{style:S.h1},fmtDate(dt))),
+        h("div",{onClick:function(){setApiKeyError(null);setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);},
+          style:{fontSize:10,color:C.dim,cursor:"pointer",letterSpacing:1,border:"1px solid "+C.border,padding:"5px 9px",borderRadius:4,marginBottom:4}},
+          profile&&profile.anthropic_api_key?"⚙ KEY":"+ ADD KEY")
       ),
       h("div",{style:S.card},
         MacroBar("Protein",totals.protein,targets.protein,C.blue),
@@ -1141,12 +1158,23 @@ function App(){
     ):null,
     apiKeyModal?h("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}},
       h("div",{style:{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:24,maxWidth:400,width:"100%"}},
-        h("div",{style:{fontSize:14,fontWeight:700,color:C.white,marginBottom:4}},"Anthropic API Key Required"),
-        h("div",{style:{fontSize:11,color:C.dim,marginBottom:16,lineHeight:1.6}},"Add your Anthropic API key to enable AI food scanning. It's stored securely in your account and syncs across devices."),
-        h("input",{type:"password",placeholder:"sk-ant-...",value:apiKeyInput,onChange:function(e){setApiKeyInput(e.target.value);},onKeyDown:function(e){if(e.key==="Enter")saveApiKey();},style:Object.assign({},S.input,{width:"100%",padding:"10px",marginBottom:16,fontSize:13})}),
+        h("div",{style:{fontSize:14,fontWeight:700,color:C.white,marginBottom:4}},
+          profile&&profile.anthropic_api_key?"Update API Key":"Anthropic API Key Required"),
+        h("div",{style:{fontSize:11,color:C.dim,marginBottom:14,lineHeight:1.6}},
+          "Enter your key at console.anthropic.com → API keys. Saves to your account and syncs across all devices."),
+        h("div",{style:{position:"relative",marginBottom:apiKeyError?8:14}},
+          h("input",{type:apiKeyVisible?"text":"password",placeholder:"sk-ant-...",value:apiKeyInput,
+            onChange:function(e){setApiKeyInput(e.target.value);setApiKeyError(null);},
+            onKeyDown:function(e){if(e.key==="Enter")saveApiKey();},
+            style:Object.assign({},S.input,{width:"100%",padding:"10px",paddingRight:64,fontSize:13})}),
+          h("span",{onClick:function(){setApiKeyVisible(function(v){return !v;});},
+            style:{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:C.dim,fontSize:10,cursor:"pointer",letterSpacing:1,userSelect:"none"}},
+            apiKeyVisible?"HIDE":"SHOW")
+        ),
+        apiKeyError?h("div",{style:{fontSize:11,color:"#ef4444",marginBottom:12,letterSpacing:0.3}},apiKeyError):null,
         h("div",{style:{display:"flex",gap:8}},
           h("div",{onClick:saveApiKey,style:{flex:1,padding:"12px",background:C.green,color:C.bg,fontWeight:700,fontSize:13,textAlign:"center",borderRadius:6,cursor:"pointer"}},"SAVE"),
-          h("div",{onClick:function(){setApiKeyModal(false);setApiKeyInput("");setPendingScan(null);},style:{padding:"12px 16px",border:"1px solid "+C.border,color:C.dim,fontSize:13,textAlign:"center",borderRadius:6,cursor:"pointer"}},"CANCEL")
+          h("div",{onClick:function(){setApiKeyModal(false);setApiKeyInput("");setApiKeyError(null);setApiKeyVisible(false);setPendingScan(null);},style:{padding:"12px 16px",border:"1px solid "+C.border,color:C.dim,fontSize:13,textAlign:"center",borderRadius:6,cursor:"pointer"}},"CANCEL")
         )
       )
     ):null,
