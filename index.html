@@ -616,9 +616,7 @@ function App(){
 
   function copyPrevSet(ei,si){
     var prevW=wlog[ei+"-"+(si-1)+"-w"]||"";
-    var prevR=wlog[ei+"-"+(si-1)+"-r"]||"";
     if(prevW)setWval(ei,si,"w",prevW);
-    if(prevR)setWval(ei,si,"r",prevR);
     setCopyKeys(function(p){var n=Object.assign({},p);n[ei+"-"+si]=(n[ei+"-"+si]||0)+1;return n;});
   }
 
