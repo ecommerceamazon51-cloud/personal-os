@@ -465,6 +465,8 @@ function App(){
   var migratingArr=useState(false);var migrating=migratingArr[0];var setMigrating=migratingArr[1];
   var toastsArr=useState([]);var toasts=toastsArr[0];var setToasts=toastsArr[1];
   var copyKeysArr=useState({});var copyKeys=copyKeysArr[0];var setCopyKeys=copyKeysArr[1];
+  var notesDataArr=useState({});var notesData=notesDataArr[0];var setNotesData=notesDataArr[1];
+  var openNotesArr=useState({});var openNotes=openNotesArr[0];var setOpenNotes=openNotesArr[1];
 
   function toast(msg,type){
     var id=Date.now()+Math.random();
@@ -553,6 +555,13 @@ function App(){
   },[view,user]);
 
   useEffect(function(){
+    if(!user||view!=="workout")return;
+    sb.from("notes").select("key,note").eq("user_id",user.id).then(function(r){
+      if(r.data){var map={};r.data.forEach(function(row){map[row.key]=row.note;});setNotesData(map);}
+    });
+  },[user,view]);
+
+  useEffect(function(){
     if(!user||view!=="nutrition")return;
     sb.from("nutrition_logs").select("*").eq("user_id",user.id).eq("date",dt).order("logged_at").then(function(r){if(r.data)setNutLog(r.data);});
   },[view,user,dt]);
@@ -618,6 +627,14 @@ function App(){
     var prevW=wlog[ei+"-"+(si-1)+"-w"]||"";
     if(prevW)setWval(ei,si,"w",prevW);
     setCopyKeys(function(p){var n=Object.assign({},p);n[ei+"-"+si]=(n[ei+"-"+si]||0)+1;return n;});
+  }
+
+  function saveNote(key,text){
+    setNotesData(function(p){var n=Object.assign({},p);n[key]=text;return n;});
+    sb.from("notes").upsert({user_id:user.id,key:key,note:text,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
+  }
+  function toggleNote(key){
+    setOpenNotes(function(p){var n=Object.assign({},p);n[key]=!p[key];return n;});
   }
 
   function callClaudeVision(b64,mode){
@@ -828,11 +845,15 @@ function App(){
               h("div",{style:{fontSize:13,fontWeight:600,color:C.white}},ex.name),
               h("div",{style:{fontSize:11,color:C.dim,marginTop:2}},ex.sets+"x"+ex.reps+" — "+ex.note)
             ),
-            pr&&pr.weight>0?h("div",{style:{background:C.accent+"15",border:"1px solid "+C.accent+"33",borderRadius:6,padding:"4px 8px",textAlign:"center",flexShrink:0,marginLeft:8}},
-              h("div",{style:{fontSize:11,fontWeight:700,color:C.accent}},"PR "+pr.weight+"lb"),
-              h("div",{style:{fontSize:9,color:C.dim}},"x"+pr.reps)
-            ):null
+            h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0,marginLeft:8}},
+              !isPast?h("div",{onClick:function(){toggleNote(ex.name);},style:{fontSize:9,letterSpacing:1,color:notesData[ex.name]?C.grey:C.dim,cursor:"pointer",padding:"2px 7px",border:"1px solid "+(notesData[ex.name]?C.border:C.dark),borderRadius:3,userSelect:"none"}},openNotes[ex.name]?"CLOSE":"NOTES"):null,
+              pr&&pr.weight>0?h("div",{style:{background:C.accent+"15",border:"1px solid "+C.accent+"33",borderRadius:6,padding:"4px 8px",textAlign:"center"}},
+                h("div",{style:{fontSize:11,fontWeight:700,color:C.accent}},"PR "+pr.weight+"lb"),
+                h("div",{style:{fontSize:9,color:C.dim}},"x"+pr.reps)
+              ):null
+            )
           ),
+          openNotes[ex.name]?h("textarea",{key:ex.name+"-note",defaultValue:notesData[ex.name]||"",placeholder:"Notes for "+ex.name+"...",autoFocus:true,rows:3,onBlur:function(e){saveNote(ex.name,e.target.value);setOpenNotes(function(p){var n=Object.assign({},p);n[ex.name]=false;return n;});},style:{width:"100%",background:"#0d0d12",border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px",color:C.white,fontSize:12,fontFamily:"'Courier New',monospace",resize:"none",lineHeight:1.5,marginBottom:8,display:"block"}}):null,
           !isPast&&isDeload&&deloadWeight?h("div",{style:{background:C.orange+"15",border:"1px solid "+C.orange+"33",borderRadius:6,padding:"6px 10px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}},
             h("div",{style:{fontSize:11,color:C.orange}},"⚠️ Deload target"),
             h("div",{style:{fontSize:13,fontWeight:700,color:C.orange}},deloadWeight+" lb")
@@ -872,11 +893,15 @@ function App(){
         );
       }),
       !isPast?h("div",{style:Object.assign({},S.card,{marginTop:4})},
-        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:anyDone?12:0}},
-          h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1}},"SESSION VOLUME"),
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+            h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1}},"SESSION VOLUME"),
+            h("div",{onClick:function(){toggleNote("workout-"+d);},style:{fontSize:9,letterSpacing:1,color:notesData["workout-"+d]?C.grey:C.dim,cursor:"pointer",padding:"2px 7px",border:"1px solid "+(notesData["workout-"+d]?C.border:C.dark),borderRadius:3,userSelect:"none"}},openNotes["workout-"+d]?"CLOSE":"NOTES")
+          ),
           h("div",{style:{fontSize:20,fontWeight:700,color:sessionVolume>0?C.accent:C.dim}},sessionVolume>=1000?(sessionVolume/1000).toFixed(1)+"k":sessionVolume," lbs")
         ),
-        anyDone?h("div",{onClick:function(){setShowSummary(true);window.scrollTo({top:0,behavior:"smooth"});},style:{width:"100%",padding:"12px",background:C.green,color:C.bg,fontWeight:700,fontSize:13,textAlign:"center",borderRadius:6,cursor:"pointer",letterSpacing:1}},"✅ FINISH WORKOUT"):null
+        openNotes["workout-"+d]?h("textarea",{key:"workout-"+d+"-note",defaultValue:notesData["workout-"+d]||"",placeholder:"Overall workout notes...",autoFocus:true,rows:3,onBlur:function(e){saveNote("workout-"+d,e.target.value);setOpenNotes(function(p){var n=Object.assign({},p);n["workout-"+d]=false;return n;});},style:{width:"100%",background:"#0d0d12",border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px",color:C.white,fontSize:12,fontFamily:"'Courier New',monospace",resize:"none",lineHeight:1.5,marginBottom:anyDone?12:0,display:"block"}}):null,
+        anyDone&&!openNotes["workout-"+d]?h("div",{onClick:function(){setShowSummary(true);window.scrollTo({top:0,behavior:"smooth"});},style:{width:"100%",padding:"12px",background:C.green,color:C.bg,fontWeight:700,fontSize:13,textAlign:"center",borderRadius:6,cursor:"pointer",letterSpacing:1}},"✅ FINISH WORKOUT"):null
       ):null
     );
   }
