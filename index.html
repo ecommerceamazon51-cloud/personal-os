@@ -461,6 +461,13 @@ function App(){
   var apiKeyVisibleArr=useState(false);var apiKeyVisible=apiKeyVisibleArr[0];var setApiKeyVisible=apiKeyVisibleArr[1];
   var showMigrationArr=useState(false);var showMigration=showMigrationArr[0];var setShowMigration=showMigrationArr[1];
   var migratingArr=useState(false);var migrating=migratingArr[0];var setMigrating=migratingArr[1];
+  var toastsArr=useState([]);var toasts=toastsArr[0];var setToasts=toastsArr[1];
+
+  function toast(msg,type){
+    var id=Date.now()+Math.random();
+    setToasts(function(t){return t.concat({id:id,msg:msg,type:type||"success"});});
+    setTimeout(function(){setToasts(function(t){return t.filter(function(x){return x.id!==id;});});},3000);
+  }
   var touchStartX=useRef(null);
   var cameraInputRef=useRef(null);
   var nutScanModeRef=useRef(null);
@@ -609,7 +616,7 @@ function App(){
     setNutLoading(true);
     sb.functions.invoke("claude-vision",{body:{b64:b64,mode:mode}}).then(function(r){
       setNutLoading(false);
-      if(r.error){alert("Edge function error: "+r.error.message);return;}
+      if(r.error){toast("Scan error: "+r.error.message,"error");return;}
       var data=r.data;
       if(data&&data.error){
         if(data.error.type==="authentication_error"){
@@ -621,19 +628,19 @@ function App(){
         }else if(data.error.type==="no_api_key"){
           setPendingScan({b64:b64,mode:mode});
           setApiKeyError(null);setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);
-        }else{alert("Claude error: "+(data.error.message||"Unknown error"));}
+        }else{toast("Claude error: "+(data.error.message||"Unknown error"),"error");}
         return;
       }
       var text=data&&data.content&&data.content[0]&&data.content[0].text;
-      if(!text){alert("No response from Claude. Try again.");return;}
+      if(!text){toast("No response from Claude. Try again.","error");return;}
       try{
         setNutScan({mode:mode,base64:b64,result:JSON.parse(text.trim()),portionMult:1.0});
       }catch(e){
         var match=text.match(/\{[\s\S]*?\}/);
         if(match){try{setNutScan({mode:mode,base64:b64,result:JSON.parse(match[0]),portionMult:1.0});return;}catch(e2){}}
-        alert("Could not parse response. Try again.");
+        toast("Could not parse response. Try again.","error");
       }
-    }).catch(function(e){setNutLoading(false);alert("Scan failed: "+e.message);});
+    }).catch(function(e){setNutLoading(false);toast("Scan failed: "+e.message,"error");});
   }
 
   function logNutritionEntry(entry){
@@ -641,8 +648,9 @@ function App(){
     var tempRow={id:tempId,user_id:user.id,date:dt,name:entry.name,calories:Math.round(entry.calories),protein:parseFloat(entry.protein)||0,carbs:parseFloat(entry.carbs)||0,fat:parseFloat(entry.fat)||0,portion_multiplier:entry.portionMult,source:entry.source,claude_reasoning:entry.reasoning||null};
     setNutLog(function(p){return p.concat(tempRow);});
     setNutScan(null);setNutManual(false);
+    toast(entry.name+" logged");
     sb.from("nutrition_logs").insert({user_id:user.id,date:dt,name:entry.name,calories:Math.round(entry.calories),protein:parseFloat(entry.protein)||0,carbs:parseFloat(entry.carbs)||0,fat:parseFloat(entry.fat)||0,portion_multiplier:entry.portionMult,source:entry.source,claude_reasoning:entry.reasoning||null,logged_at:new Date().toISOString()}).select().then(function(r){
-      if(r.error)setNutLog(function(p){return p.filter(function(x){return x.id!==tempId;});});
+      if(r.error){setNutLog(function(p){return p.filter(function(x){return x.id!==tempId;});});toast("Failed to save — try again","error");}
       else if(r.data&&r.data[0])setNutLog(function(p){return p.map(function(x){return x.id===tempId?r.data[0]:x;});});
     });
   }
@@ -656,6 +664,7 @@ function App(){
       if(!r.error){
         setProfile(function(p){return Object.assign({},p,{anthropic_api_key:key});});
         setApiKeyModal(false);setApiKeyInput("");setApiKeyVisible(false);
+        toast("API key saved");
         if(pendingScan){callClaudeVision(pendingScan.b64,pendingScan.mode);setPendingScan(null);}
       }else{setApiKeyError("Failed to save — check connection and try again");}
     });
@@ -1091,7 +1100,7 @@ function App(){
             if(!profile||!profile.anthropic_api_key){setPendingScan({b64:b64,mode:mode});setApiKeyModal(true);}
             else callClaudeVision(b64,mode);
           };
-          img.onerror=function(){URL.revokeObjectURL(url);alert("Could not load image. Try again.");};
+          img.onerror=function(){URL.revokeObjectURL(url);toast("Could not load image. Try again.","error");};
           img.src=url;
         }
       }),
@@ -1133,6 +1142,11 @@ function App(){
   var tabs=[{id:"dashboard",icon:"📋",l:"Today"},{id:"workout",icon:"🏋️",l:"Workout"},{id:"history",icon:"📊",l:"History"},{id:"nutrition",icon:"🍽️",l:"Nutrition"},{id:"sections",icon:"◆",l:"Systems"}];
 
   return h("div",{style:{background:C.bg,minHeight:"100vh"},onTouchStart:handleTouchStart,onTouchEnd:handleTouchEnd},
+    h("div",{style:{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",width:"calc(100% - 32px)",maxWidth:448,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",gap:8,pointerEvents:"none"}},
+      toasts.map(function(t){
+        return h("div",{key:t.id,style:{background:t.type==="error"?C.red:C.green,color:"#000",padding:"10px 18px",borderRadius:6,fontSize:12,fontWeight:700,letterSpacing:0.5,textAlign:"center",width:"100%",fontFamily:"'Courier New',monospace"}},t.msg);
+      })
+    ),
     h("div",{style:S.wrap},
       h("div",{key:"v-"+view,className:"fade-in"},
         view==="dashboard"?Dashboard():
