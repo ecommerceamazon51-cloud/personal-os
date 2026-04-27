@@ -1016,12 +1016,18 @@ function App(){
           ),
           h("div",{style:{marginBottom:14}},
             h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"PORTION"),
-            h("div",{style:{display:"flex",gap:6}},
+            h("div",{style:{display:"flex",gap:6,marginBottom:8}},
               [0.5,0.75,1,1.5,2].map(function(p){
                 return h("div",{key:p,onClick:function(){setNutScan(function(n){return Object.assign({},n,{portionMult:p});});},
                   style:{flex:1,textAlign:"center",padding:"8px 0",borderRadius:4,fontSize:11,fontWeight:700,cursor:"pointer",background:pm===p?C.green:C.dark,color:pm===p?C.bg:C.grey,border:"1px solid "+(pm===p?C.green:C.border)}},
                   p+"×");
               })
+            ),
+            h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+              h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,whiteSpace:"nowrap"}},"CUSTOM ×"),
+              h("input",{type:"text",inputMode:"decimal",placeholder:"e.g. 4",
+                onBlur:function(e){var v=parseFloat(e.target.value);if(v>0)setNutScan(function(n){return Object.assign({},n,{portionMult:Math.round(v*100)/100});});},
+                style:{flex:1,background:C.dark,border:"1px solid "+C.border,borderRadius:4,padding:"8px 10px",color:C.white,fontSize:13,fontFamily:"inherit"}})
             )
           ),
           h("div",{style:{display:"flex",gap:8}},
