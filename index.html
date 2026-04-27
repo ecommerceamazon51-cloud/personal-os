@@ -464,6 +464,7 @@ function App(){
   var showMigrationArr=useState(false);var showMigration=showMigrationArr[0];var setShowMigration=showMigrationArr[1];
   var migratingArr=useState(false);var migrating=migratingArr[0];var setMigrating=migratingArr[1];
   var toastsArr=useState([]);var toasts=toastsArr[0];var setToasts=toastsArr[1];
+  var copyKeysArr=useState({});var copyKeys=copyKeysArr[0];var setCopyKeys=copyKeysArr[1];
 
   function toast(msg,type){
     var id=Date.now()+Math.random();
@@ -611,6 +612,14 @@ function App(){
     sb.from("workout_logs").upsert(upsertData,{onConflict:"user_id,date,exercise_idx,set_idx"}).then(function(r){
       if(r.error)setWlog(function(p){var n=Object.assign({},p);n[k]=wasDone;return n;});
     });
+  }
+
+  function copyPrevSet(ei,si){
+    var prevW=wlog[ei+"-"+(si-1)+"-w"]||"";
+    var prevR=wlog[ei+"-"+(si-1)+"-r"]||"";
+    if(prevW)setWval(ei,si,"w",prevW);
+    if(prevR)setWval(ei,si,"r",prevR);
+    setCopyKeys(function(p){var n=Object.assign({},p);n[ei+"-"+si]=(n[ei+"-"+si]||0)+1;return n;});
   }
 
   function callClaudeVision(b64,mode){
@@ -845,8 +854,12 @@ function App(){
             var placeholder=!isPast&&isDeload&&deloadWeight?deloadWeight:"lbs";
             var isDone=!!activeLog[eIdx+"-"+sIdx+"-done"];
             var wVal=activeLog[eIdx+"-"+sIdx+"-w"]||"";var rVal=activeLog[eIdx+"-"+sIdx+"-r"]||"";
-            return h("div",{key:eIdx+"-"+sIdx,style:{display:"flex",gap:8,alignItems:"center",marginBottom:6,minHeight:36}},
-              h("div",{style:{fontSize:10,color:C.dim,width:24,flexShrink:0}},"S"+(sIdx+1)),
+            var hasPrevData=sIdx>0&&!!(activeLog[eIdx+"-"+(sIdx-1)+"-w"]);
+            var copyKey=copyKeys[eIdx+"-"+sIdx]||0;
+            return h("div",{key:eIdx+"-"+sIdx+"-"+copyKey,style:{display:"flex",gap:8,alignItems:"center",marginBottom:6,minHeight:36}},
+              !isPast&&sIdx>0
+                ?h("div",{onClick:hasPrevData?function(){copyPrevSet(eIdx,sIdx);}:null,style:{fontSize:12,color:hasPrevData?C.accent:C.dim,width:24,flexShrink:0,textAlign:"center",cursor:hasPrevData?"pointer":"default",lineHeight:"24px",userSelect:"none"}},"↓")
+                :h("div",{style:{fontSize:10,color:C.dim,width:24,flexShrink:0}},"S"+(sIdx+1)),
               isPast
                 ?h("div",{style:{width:64,textAlign:"center",fontSize:12,color:isDone?C.white:C.dim,background:"#0a0a0f",border:"1px solid "+C.border,borderRadius:4,padding:"6px 0"}},wVal||"—")
                 :h("input",{type:"number",inputMode:"numeric",pattern:"[0-9]*",placeholder:String(placeholder),defaultValue:wVal,onBlur:function(e){setWval(eIdx,sIdx,"w",e.target.value);},style:Object.assign({},S.input,{width:64,textAlign:"center"})}),
