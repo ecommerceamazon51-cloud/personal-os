@@ -572,12 +572,31 @@ function App(){
     var id=setTimeout(function(){
       setTimer(function(t){
         if(!t||!t.active)return t;
-        if(t.remaining<=1){if(navigator.vibrate)navigator.vibrate([200,100,200]);return{remaining:0,total:t.total,label:t.label,active:false,done:true};}
-        return{remaining:t.remaining-1,total:t.total,label:t.label,active:true,done:false};
+        var rem=Math.max(0,Math.round((t.endAt-Date.now())/1000));
+        if(rem<=0){if(navigator.vibrate)navigator.vibrate([200,100,200]);return{remaining:0,total:t.total,label:t.label,active:false,done:true,endAt:t.endAt};}
+        return{remaining:rem,total:t.total,label:t.label,active:true,done:false,endAt:t.endAt};
       });
     },1000);
     return function(){clearTimeout(id);};
   },[timerRemaining,timerActive]);
+
+  useEffect(function(){
+    function onVisChange(){
+      if(document.hidden){
+        var el=document.activeElement;
+        if(el&&(el.tagName==="INPUT"||el.tagName==="TEXTAREA"))el.blur();
+      } else {
+        setTimer(function(t){
+          if(!t||!t.active)return t;
+          var rem=Math.max(0,Math.round((t.endAt-Date.now())/1000));
+          if(rem<=0){if(navigator.vibrate)navigator.vibrate([200,100,200,100,200]);return{remaining:0,total:t.total,label:t.label,active:false,done:true,endAt:t.endAt};}
+          return Object.assign({},t,{remaining:rem});
+        });
+      }
+    }
+    document.addEventListener("visibilitychange",onVisChange);
+    return function(){document.removeEventListener("visibilitychange",onVisChange);};
+  },[]);
 
   function loadHistory(){
     if(!user||histLoading)return;
@@ -613,7 +632,7 @@ function App(){
     setWlog(function(p){var n=Object.assign({},p);n[k]=next;return n;});
     if(next&&workout&&workout.exercises[ei]){
       var ex=workout.exercises[ei];var dur={heavy:180,compound:120,accessory:90}[ex.timerType]||90;
-      setTimer({remaining:dur,total:dur,label:ex.name,active:true,done:false});
+      setTimer({remaining:dur,total:dur,label:ex.name,active:true,done:false,endAt:Date.now()+dur*1000});
     }
     var upsertData={user_id:user.id,date:dt,exercise_idx:ei,set_idx:si,day_override:d,is_done:next};
     var wVal=parseFloat(wlog[ei+"-"+si+"-w"])||null;var rVal=parseInt(wlog[ei+"-"+si+"-r"])||null;
