@@ -1,0 +1,25 @@
+{
+  "name": "Personal OS",
+  "short_name": "Personal OS",
+  "description": "Your personal optimization platform",
+  "start_url": "/personal-os/",
+  "scope": "/personal-os/",
+  "display": "standalone",
+  "background_color": "#08080a",
+  "theme_color": "#08080a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
