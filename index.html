@@ -606,15 +606,10 @@ function App(){
 
   function callClaudeVision(b64,mode){
     setNutLoading(true);
-    var prompt=mode==="scan_label"
-      ?"Extract from this nutrition label: name, calories, protein (g), carbs (g), fat (g). Return ONLY valid JSON: {\"name\":\"...\",\"calories\":0,\"protein\":0,\"carbs\":0,\"fat\":0}"
-      :"Identify this food and estimate macros for a typical single portion. Return ONLY valid JSON: {\"name\":\"...\",\"calories\":0,\"protein\":0,\"carbs\":0,\"fat\":0,\"reasoning\":\"one sentence\"}";
-    fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"x-api-key":profile.anthropic_api_key,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-allow-browser-access":"true"},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:256,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},{type:"text",text:prompt}]}]})
-    }).then(function(r){return r.json();}).then(function(data){
+    sb.functions.invoke("claude-vision",{body:{b64:b64,mode:mode}}).then(function(r){
       setNutLoading(false);
+      if(r.error){alert("Error: "+r.error.message);return;}
+      var data=r.data;
       if(data.error){
         if(data.error.type==="authentication_error"){
           setProfile(function(p){return Object.assign({},p,{anthropic_api_key:null});});
@@ -622,6 +617,9 @@ function App(){
           setPendingScan({b64:b64,mode:mode});
           setApiKeyError("Invalid API key — please enter a new one");
           setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);
+        }else if(data.error.type==="no_api_key"){
+          setPendingScan({b64:b64,mode:mode});
+          setApiKeyError(null);setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);
         }else{alert("Claude error: "+(data.error.message||"Unknown error"));}
         return;
       }
@@ -635,7 +633,7 @@ function App(){
         if(match){try{setNutScan({mode:mode,base64:b64,result:JSON.parse(match[0]),portionMult:1.0});return;}catch(e2){}}
         alert("Could not parse response. Try again.");
       }
-    }).catch(function(e){setNutLoading(false);alert("Network error — check connection and try again.\n("+e.message+")");});
+    }).catch(function(e){setNutLoading(false);alert("Error: "+e.message);});
   }
 
   function logNutritionEntry(entry){
