@@ -280,7 +280,7 @@ function getGhostFromHistory(sessions,todayDate){
       var exIdx=-1;
       for(var j=0;j<workout.exercises.length;j++){if(workout.exercises[j].name===ex.name){exIdx=j;break;}}
       if(exIdx>=0&&ex.sets.length>0){
-        ghost.exercises[exIdx]={sets:ex.sets.map(function(s){return{weight:s.weight,reps:s.reps};}),best:ex.sets.reduce(function(a,b){return a.weight>b.weight?a:b},ex.sets[0])};
+        ghost.exercises[exIdx]={sets:ex.sets.map(function(s){return{weight:s.weight,reps:s.reps,set:s.set};}),best:ex.sets.reduce(function(a,b){return a.weight>b.weight?a:b},ex.sets[0])};
       }
     });
     if(Object.keys(ghost.exercises).length>0)return ghost;
@@ -456,6 +456,7 @@ function App(){
   var apiKeyModalArr=useState(false);var apiKeyModal=apiKeyModalArr[0];var setApiKeyModal=apiKeyModalArr[1];
   var nutManualArr=useState(false);var nutManual=nutManualArr[0];var setNutManual=nutManualArr[1];
   var nutLoadingArr=useState(false);var nutLoading=nutLoadingArr[0];var setNutLoading=nutLoadingArr[1];
+  var nutRefreshingArr=useState(false);var nutRefreshing=nutRefreshingArr[0];var setNutRefreshing=nutRefreshingArr[1];
   var pendingScanArr=useState(null);var pendingScan=pendingScanArr[0];var setPendingScan=pendingScanArr[1];
   var nutFormArr=useState({name:"",calories:"",protein:"",carbs:"",fat:""});var nutForm=nutFormArr[0];var setNutForm=nutFormArr[1];
   var apiKeyInputArr=useState("");var apiKeyInput=apiKeyInputArr[0];var setApiKeyInput=apiKeyInputArr[1];
@@ -475,6 +476,7 @@ function App(){
     setTimeout(function(){setToasts(function(t){return t.filter(function(x){return x.id!==id;});});},3000);
   }
   var touchStartX=useRef(null);
+  var touchStartY=useRef(null);
   var cameraInputRef=useRef(null);
   var nutScanModeRef=useRef(null);
 
@@ -564,7 +566,11 @@ function App(){
 
   useEffect(function(){
     if(!user||view!=="nutrition")return;
-    sb.from("nutrition_logs").select("*").eq("user_id",user.id).eq("date",dt).order("logged_at").then(function(r){if(r.data)setNutLog(r.data);});
+    setNutRefreshing(true);
+    sb.from("nutrition_logs").select("*").eq("user_id",user.id).eq("date",dt).order("logged_at").then(function(r){
+      if(r.data)setNutLog(r.data);
+      setNutRefreshing(false);
+    }).catch(function(){setNutRefreshing(false);});
   },[view,user,dt]);
 
   var timerRemaining=timer?timer.remaining:-1;var timerActive=timer?timer.active:false;
@@ -612,6 +618,15 @@ function App(){
     }).catch(function(){setHistLoading(false);});
   }
 
+  function refreshNutrition(){
+    if(!user||nutRefreshing)return;
+    setNutRefreshing(true);
+    sb.from("nutrition_logs").select("*").eq("user_id",user.id).eq("date",dt).order("logged_at").then(function(r){
+      if(r.data)setNutLog(r.data);
+      setNutRefreshing(false);
+    }).catch(function(){setNutRefreshing(false);});
+  }
+
   function toggleCheck(id){
     var prev=!!checks[id];var next=!prev;
     setChecks(function(p){var n=Object.assign({},p);n[id]=next;return n;});
@@ -657,7 +672,8 @@ function App(){
     workout.exercises.forEach(function(ex,eIdx){
       var ghostEx=ghost.exercises[eIdx];
       if(!ghostEx)return;
-      ghostEx.sets.forEach(function(gs,sIdx){
+      ghostEx.sets.forEach(function(gs,arrIdx){
+        var sIdx=gs.set!==undefined?gs.set-1:arrIdx;
         if(gs.weight){newWlog[eIdx+"-"+sIdx+"-w"]=gs.weight;newGhostFilled[eIdx+"-"+sIdx+"-w"]=true;}
         if(gs.reps){newWlog[eIdx+"-"+sIdx+"-r"]=gs.reps;newGhostFilled[eIdx+"-"+sIdx+"-r"]=true;}
         newCopyKeys[eIdx+"-"+sIdx]=(newCopyKeys[eIdx+"-"+sIdx]||0)+1;
@@ -798,14 +814,23 @@ function App(){
 
   var checkCount=Object.values(checks).filter(Boolean).length;
   var TAB_ORDER=["dashboard","workout","history","nutrition","sections"];
-  function handleTouchStart(e){touchStartX.current=e.touches[0].clientX;}
+  function handleTouchStart(e){
+    touchStartX.current=e.touches[0].clientX;
+    touchStartY.current=e.touches[0].clientY;
+  }
   function handleTouchEnd(e){
     if(touchStartX.current===null)return;
-    var delta=touchStartX.current-e.changedTouches[0].clientX;
-    var idx=TAB_ORDER.indexOf(view);
-    if(delta>60&&idx<TAB_ORDER.length-1)setView(TAB_ORDER[idx+1]);
-    else if(delta<-60&&idx>0)setView(TAB_ORDER[idx-1]);
+    var dx=touchStartX.current-e.changedTouches[0].clientX;
+    var dy=touchStartY.current-e.changedTouches[0].clientY;
     touchStartX.current=null;
+    touchStartY.current=null;
+    if(Math.abs(dx)>Math.abs(dy)){
+      var idx=TAB_ORDER.indexOf(view);
+      if(dx>60&&idx<TAB_ORDER.length-1)setView(TAB_ORDER[idx+1]);
+      else if(dx<-60&&idx>0)setView(TAB_ORDER[idx-1]);
+    } else if(view==="nutrition"&&dy<-70&&window.scrollY<=10){
+      refreshNutrition();
+    }
   }
   var timerClr=timer?(timer.done?C.accent:timer.remaining>timer.total*0.5?C.green:timer.remaining>timer.total*0.25?C.yellow:C.orange):C.green;
 
@@ -892,7 +917,7 @@ function App(){
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
           h("div",null,
             h("div",{style:{fontSize:11,fontWeight:600,color:C.purple}},"🏎️ GHOST: "+fmtDate(ghost.date)),
-            h("div",{style:{fontSize:10,color:C.dim,marginTop:2}},hasGF?"Numbers loaded — purple = last session":"Beat your last session.")
+            h("div",{style:{fontSize:10,color:C.dim,marginTop:2}},hasGF?"Numbers loaded — purple = last session":Object.keys(ghost.exercises).length+"/"+workout.exercises.length+" exercises · "+fmtDate(ghost.date))
           ),
           h("div",{onClick:hasGF?clearGhost:fillFromGhost,style:{fontSize:9,letterSpacing:1,color:hasGF?C.dim:C.purple,cursor:"pointer",padding:"6px 10px",border:"1px solid "+(hasGF?C.dark:C.purple+"55"),borderRadius:4,userSelect:"none",flexShrink:0}},hasGF?"× CLEAR":"↑ LOAD")
         )
@@ -1167,10 +1192,11 @@ function App(){
       h("div",{style:Object.assign({},S.header,{display:"flex",justifyContent:"space-between",alignItems:"flex-end"})},
         h("div",null,h("div",{style:S.title},"NUTRITION"),h("div",{style:S.h1},fmtDate(dt))),
         h("div",{style:{display:"flex",gap:6,alignItems:"center",marginBottom:4}},
-          h("div",{onClick:function(){sb.from("nutrition_logs").select("*").eq("user_id",user.id).eq("date",dt).order("logged_at").then(function(r){if(r.data)setNutLog(r.data);});},style:{fontSize:10,color:C.dim,cursor:"pointer",letterSpacing:1,border:"1px solid "+C.border,padding:"5px 9px",borderRadius:4}},"↻"),
+          h("div",{onClick:nutRefreshing?null:refreshNutrition,style:{fontSize:10,color:nutRefreshing?C.dark:C.dim,cursor:nutRefreshing?"default":"pointer",letterSpacing:1,border:"1px solid "+C.border,padding:"5px 9px",borderRadius:4}},nutRefreshing?"...":"↻"),
           h("div",{onClick:function(){setApiKeyError(null);setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);},style:{fontSize:10,color:C.dim,cursor:"pointer",letterSpacing:1,border:"1px solid "+C.border,padding:"5px 9px",borderRadius:4}},profile&&profile.anthropic_api_key?"⚙ KEY":"+ ADD KEY")
         )
       ),
+      nutRefreshing?h("div",{style:{textAlign:"center",padding:"6px 0 2px",fontSize:10,color:C.dim,letterSpacing:1}},"↻  REFRESHING..."):null,
       h("div",{style:S.card},
         MacroBar("Protein",totals.protein,targets.protein,C.blue),
         MacroBar("Carbs",totals.carbs,targets.carbs,C.orange),
@@ -1209,7 +1235,7 @@ function App(){
       h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"TODAY'S FOOD"),
       nutLog.length===0?h("div",{style:Object.assign({},S.card,{textAlign:"center",color:C.dim,padding:24,fontSize:12})},
         h("div",null,"No food logged for "+fmtDate(dt)),
-        h("div",{style:{fontSize:10,marginTop:6,color:C.dark}},"Tap ↻ to reload if data is missing")
+        h("div",{style:{fontSize:10,marginTop:6,color:C.dark}},nutRefreshing?"Checking...":"Pull down or tap ↻ to refresh")
       ):
       nutLog.slice().reverse().map(function(row,i){
         var srcBadge={scan_label:"📷",eyeball:"👁",manual:"✏️"};
