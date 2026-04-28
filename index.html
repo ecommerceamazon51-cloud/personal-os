@@ -457,6 +457,7 @@ function App(){
   var nutManualArr=useState(false);var nutManual=nutManualArr[0];var setNutManual=nutManualArr[1];
   var nutLoadingArr=useState(false);var nutLoading=nutLoadingArr[0];var setNutLoading=nutLoadingArr[1];
   var nutRefreshingArr=useState(false);var nutRefreshing=nutRefreshingArr[0];var setNutRefreshing=nutRefreshingArr[1];
+  var recentFoodsArr=useState([]);var recentFoods=recentFoodsArr[0];var setRecentFoods=recentFoodsArr[1];
   var pendingScanArr=useState(null);var pendingScan=pendingScanArr[0];var setPendingScan=pendingScanArr[1];
   var nutFormArr=useState({name:"",calories:"",protein:"",carbs:"",fat:""});var nutForm=nutFormArr[0];var setNutForm=nutFormArr[1];
   var apiKeyInputArr=useState("");var apiKeyInput=apiKeyInputArr[0];var setApiKeyInput=apiKeyInputArr[1];
@@ -507,7 +508,7 @@ function App(){
     });
     var authSub=sb.auth.onAuthStateChange(function(event,session){
       if(event==="SIGNED_IN"&&session){setUser(session.user);loadProfile(session.user.id);}
-      if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setAuthState("unauthed");setHistData(null);setWlog({});setChecks({});setNutLog([]);}
+      if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setAuthState("unauthed");setHistData(null);setWlog({});setChecks({});setNutLog([]);setRecentFoods([]);}
     });
     return function(){authSub.data.subscription.unsubscribe();};
   },[]);
@@ -571,6 +572,7 @@ function App(){
       if(r.data)setNutLog(r.data);
       setNutRefreshing(false);
     }).catch(function(){setNutRefreshing(false);});
+    loadRecentFoods();
   },[view,user,dt]);
 
   var timerRemaining=timer?timer.remaining:-1;var timerActive=timer?timer.active:false;
@@ -625,6 +627,23 @@ function App(){
       if(r.data)setNutLog(r.data);
       setNutRefreshing(false);
     }).catch(function(){setNutRefreshing(false);});
+    loadRecentFoods();
+  }
+
+  function loadRecentFoods(){
+    if(!user)return;
+    var since=addDays(dt,-30);
+    sb.from("nutrition_logs").select("name,calories,protein,carbs,fat").eq("user_id",user.id).gte("date",since).order("logged_at",{ascending:false}).limit(200).then(function(r){
+      if(!r.data)return;
+      var seen={};var freq={};var items={};
+      r.data.forEach(function(row){
+        var key=row.name.toLowerCase().trim();
+        if(!seen[key]){seen[key]=true;items[key]={name:row.name,calories:row.calories,protein:row.protein,carbs:row.carbs,fat:row.fat};freq[key]=0;}
+        freq[key]++;
+      });
+      var sorted=Object.keys(items).sort(function(a,b){return freq[b]-freq[a];}).slice(0,10);
+      setRecentFoods(sorted.map(function(k){return items[k];}));
+    });
   }
 
   function toggleCheck(id){
@@ -752,6 +771,11 @@ function App(){
     setNutLog(function(p){return p.concat(tempRow);});
     setNutScan(null);setNutManual(false);
     toast(entry.name+" logged");
+    setRecentFoods(function(prev){
+      var key=entry.name.toLowerCase().trim();
+      var filtered=prev.filter(function(f){return f.name.toLowerCase().trim()!==key;});
+      return [{name:entry.name,calories:Math.round(entry.calories),protein:parseFloat(entry.protein)||0,carbs:parseFloat(entry.carbs)||0,fat:parseFloat(entry.fat)||0}].concat(filtered).slice(0,10);
+    });
     sb.from("nutrition_logs").insert({user_id:user.id,date:dt,name:entry.name,calories:Math.round(entry.calories),protein:parseFloat(entry.protein)||0,carbs:parseFloat(entry.carbs)||0,fat:parseFloat(entry.fat)||0,portion_multiplier:entry.portionMult,source:entry.source,claude_reasoning:entry.reasoning||null,logged_at:new Date().toISOString()}).select().then(function(r){
       if(r.error){setNutLog(function(p){return p.filter(function(x){return x.id!==tempId;});});toast("Failed to save — try again","error");}
       else if(r.data&&r.data[0])setNutLog(function(p){return p.map(function(x){return x.id===tempId?r.data[0]:x;});});
@@ -1232,6 +1256,19 @@ function App(){
         h("div",{onClick:function(){setNutManual(true);},
           style:{flex:1,padding:"12px 0",background:C.card,border:"1px solid "+C.border,borderRadius:6,textAlign:"center",cursor:"pointer",fontSize:11,fontWeight:700,color:C.white}},"+ MANUAL")
       ),
+      recentFoods.length>0?h("div",{style:{marginBottom:14}},
+        h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"QUICK ADD"),
+        h("div",{style:{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",msOverflowStyle:"none"}},
+          recentFoods.map(function(food,i){
+            return h("div",{key:i,onClick:function(){
+              setNutScan({mode:"manual",result:{name:food.name,calories:food.calories,protein:food.protein,carbs:food.carbs,fat:food.fat},portionMult:1.0,base64:null});
+            },style:{flexShrink:0,background:C.card,border:"1px solid "+C.border,borderRadius:6,padding:"8px 10px",cursor:"pointer",minWidth:80,maxWidth:130}},
+              h("div",{style:{fontSize:10,fontWeight:700,color:C.white,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},food.name),
+              h("div",{style:{fontSize:9,color:C.dim,marginTop:3}},Math.round(food.calories)+"kcal · "+Math.round(food.protein)+"g P")
+            );
+          })
+        )
+      ):null,
       h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"TODAY'S FOOD"),
       nutLog.length===0?h("div",{style:Object.assign({},S.card,{textAlign:"center",color:C.dim,padding:24,fontSize:12})},
         h("div",null,"No food logged for "+fmtDate(dt)),
