@@ -672,6 +672,24 @@ function App(){
     setGhostFilled(newGhostFilled);
   }
 
+  function clearGhost(){
+    var newWlog=Object.assign({},wlog);
+    var newCopyKeys=Object.assign({},copyKeys);
+    var pairs={};
+    Object.keys(ghostFilled).forEach(function(k){
+      delete newWlog[k];
+      var parts=k.split("-");pairs[parts[0]+"-"+parts[1]]=true;
+    });
+    Object.keys(pairs).forEach(function(pair){
+      var ei=parseInt(pair.split("-")[0]);var si=parseInt(pair.split("-")[1]);
+      newCopyKeys[ei+"-"+si]=(newCopyKeys[ei+"-"+si]||0)+1;
+      if(!wlog[ei+"-"+si+"-done"])sb.from("workout_logs").upsert({user_id:user.id,date:dt,exercise_idx:ei,set_idx:si,day_override:d,weight:null,reps:null},{onConflict:"user_id,date,exercise_idx,set_idx"});
+    });
+    setWlog(newWlog);
+    setCopyKeys(newCopyKeys);
+    setGhostFilled({});
+  }
+
   function saveNote(key,text){
     setNotesData(function(p){var n=Object.assign({},p);n[key]=text;return n;});
     sb.from("notes").upsert({user_id:user.id,key:key,note:text,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
@@ -870,15 +888,15 @@ function App(){
         ),
         h("div",{onClick:function(){setShowSummary(false);},style:{fontSize:10,color:C.dim,cursor:"pointer"}},"× dismiss")
       ):null,
-      ghost&&!isPast?h("div",{style:Object.assign({},S.card,{borderLeft:"3px solid "+C.purple,background:"#15121f"})},
+      ghost&&!isPast?(function(){var hasGF=Object.keys(ghostFilled).length>0;return h("div",{style:Object.assign({},S.card,{borderLeft:"3px solid "+C.purple,background:"#15121f"})},
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
           h("div",null,
             h("div",{style:{fontSize:11,fontWeight:600,color:C.purple}},"🏎️ GHOST: "+fmtDate(ghost.date)),
-            h("div",{style:{fontSize:10,color:C.dim,marginTop:2}},"Beat your last session.")
+            h("div",{style:{fontSize:10,color:C.dim,marginTop:2}},hasGF?"Numbers loaded — purple = last session":"Beat your last session.")
           ),
-          h("div",{onClick:fillFromGhost,style:{fontSize:9,letterSpacing:1,color:C.purple,cursor:"pointer",padding:"6px 10px",border:"1px solid "+C.purple+"55",borderRadius:4,userSelect:"none",flexShrink:0}},"↑ LOAD")
+          h("div",{onClick:hasGF?clearGhost:fillFromGhost,style:{fontSize:9,letterSpacing:1,color:hasGF?C.dim:C.purple,cursor:"pointer",padding:"6px 10px",border:"1px solid "+(hasGF?C.dark:C.purple+"55"),borderRadius:4,userSelect:"none",flexShrink:0}},hasGF?"× CLEAR":"↑ LOAD")
         )
-      ):null,
+      );})():null,
       activeWorkout.exercises.map(function(ex,eIdx){
         var setCount=sc(ex);var pr=history&&history.prs[ex.name];
         var ghostEx=ghost&&!isPast&&ghost.exercises[eIdx];
@@ -905,17 +923,6 @@ function App(){
           !isPast&&isDeload&&deloadWeight?h("div",{style:{background:C.orange+"15",border:"1px solid "+C.orange+"33",borderRadius:6,padding:"6px 10px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}},
             h("div",{style:{fontSize:11,color:C.orange}},"⚠️ Deload target"),
             h("div",{style:{fontSize:13,fontWeight:700,color:C.orange}},deloadWeight+" lb")
-          ):null,
-          ghostEx&&!isDeload?h("div",{style:{background:C.purple+"10",border:"1px solid "+C.purple+"22",borderRadius:6,padding:"6px 10px",marginBottom:8}},
-            h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
-              h("div",{style:{fontSize:10,fontWeight:600,color:C.purple,letterSpacing:1}},"🏎️ GHOST"),
-              h("div",{style:{fontSize:9,color:C.dim}},fmtDate(ghost.date))
-            ),
-            ghostEx.sets.map(function(gs,gi){
-              return h("div",{key:gi,style:{display:"flex",gap:12,fontSize:10,color:C.purple+"bb"}},
-                h("span",{style:{width:20,color:C.dim}},"S"+(gi+1)),h("span",null,gs.weight+"lb"),h("span",null,"x"+gs.reps)
-              );
-            })
           ):null,
           Array.from({length:setCount}).map(function(_,sIdx){
             var placeholder=!isPast&&isDeload&&deloadWeight?deloadWeight:"lbs";
@@ -1075,7 +1082,7 @@ function App(){
 
   function NutritionView(){
     var targets=profile?{cal:profile.target_calories,protein:profile.target_protein,carbs:profile.target_carbs,fat:profile.target_fat}:{cal:2800,protein:200,carbs:300,fat:80};
-    var totals=nutLog.reduce(function(acc,r){return{calories:acc.calories+r.calories*r.portion_multiplier,protein:acc.protein+r.protein*r.portion_multiplier,carbs:acc.carbs+r.carbs*r.portion_multiplier,fat:acc.fat+r.fat*r.portion_multiplier};},{calories:0,protein:0,carbs:0,fat:0});
+    var totals=nutLog.reduce(function(acc,r){var pm=r.portion_multiplier||1;return{calories:acc.calories+(r.calories||0)*pm,protein:acc.protein+(r.protein||0)*pm,carbs:acc.carbs+(r.carbs||0)*pm,fat:acc.fat+(r.fat||0)*pm};},{calories:0,protein:0,carbs:0,fat:0});
     function MacroBar(label,current,target,color){
       var pct=Math.min(100,(current/target)*100);
       return h("div",{style:{marginBottom:10}},
@@ -1159,9 +1166,10 @@ function App(){
     return h("div",null,
       h("div",{style:Object.assign({},S.header,{display:"flex",justifyContent:"space-between",alignItems:"flex-end"})},
         h("div",null,h("div",{style:S.title},"NUTRITION"),h("div",{style:S.h1},fmtDate(dt))),
-        h("div",{onClick:function(){setApiKeyError(null);setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);},
-          style:{fontSize:10,color:C.dim,cursor:"pointer",letterSpacing:1,border:"1px solid "+C.border,padding:"5px 9px",borderRadius:4,marginBottom:4}},
-          profile&&profile.anthropic_api_key?"⚙ KEY":"+ ADD KEY")
+        h("div",{style:{display:"flex",gap:6,alignItems:"center",marginBottom:4}},
+          h("div",{onClick:function(){sb.from("nutrition_logs").select("*").eq("user_id",user.id).eq("date",dt).order("logged_at").then(function(r){if(r.data)setNutLog(r.data);});},style:{fontSize:10,color:C.dim,cursor:"pointer",letterSpacing:1,border:"1px solid "+C.border,padding:"5px 9px",borderRadius:4}},"↻"),
+          h("div",{onClick:function(){setApiKeyError(null);setApiKeyInput("");setApiKeyVisible(false);setApiKeyModal(true);},style:{fontSize:10,color:C.dim,cursor:"pointer",letterSpacing:1,border:"1px solid "+C.border,padding:"5px 9px",borderRadius:4}},profile&&profile.anthropic_api_key?"⚙ KEY":"+ ADD KEY")
+        )
       ),
       h("div",{style:S.card},
         MacroBar("Protein",totals.protein,targets.protein,C.blue),
@@ -1199,7 +1207,10 @@ function App(){
           style:{flex:1,padding:"12px 0",background:C.card,border:"1px solid "+C.border,borderRadius:6,textAlign:"center",cursor:"pointer",fontSize:11,fontWeight:700,color:C.white}},"+ MANUAL")
       ),
       h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"TODAY'S FOOD"),
-      nutLog.length===0?h("div",{style:Object.assign({},S.card,{textAlign:"center",color:C.dim,padding:24,fontSize:12})},"No food logged yet"):
+      nutLog.length===0?h("div",{style:Object.assign({},S.card,{textAlign:"center",color:C.dim,padding:24,fontSize:12})},
+        h("div",null,"No food logged for "+fmtDate(dt)),
+        h("div",{style:{fontSize:10,marginTop:6,color:C.dark}},"Tap ↻ to reload if data is missing")
+      ):
       nutLog.slice().reverse().map(function(row,i){
         var srcBadge={scan_label:"📷",eyeball:"👁",manual:"✏️"};
         var cal=Math.round(row.calories*row.portion_multiplier);
