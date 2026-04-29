@@ -478,6 +478,7 @@ function App(){
   }
   var touchStartX=useRef(null);
   var touchStartY=useRef(null);
+  var touchInHScroll=useRef(false);
   var cameraInputRef=useRef(null);
   var nutScanModeRef=useRef(null);
 
@@ -657,9 +658,12 @@ function App(){
   function setWval(ei,si,f,v){
     setWlog(function(p){var n=Object.assign({},p);n[ei+"-"+si+"-"+f]=v;return n;});
     var upsertData={user_id:user.id,date:dt,exercise_idx:ei,set_idx:si,day_override:d};
-    if(f==="w")upsertData.weight=parseFloat(v)||null;
-    else if(f==="r")upsertData.reps=parseInt(v)||null;
-    sb.from("workout_logs").upsert(upsertData,{onConflict:"user_id,date,exercise_idx,set_idx"});
+    var parsed=v===""||v===null||v===undefined?null:(f==="w"?parseFloat(v):parseInt(v));
+    if(f==="w")upsertData.weight=parsed;
+    else if(f==="r")upsertData.reps=parsed;
+    sb.from("workout_logs").upsert(upsertData,{onConflict:"user_id,date,exercise_idx,set_idx"}).then(function(r){
+      if(r.error)toast("Save failed — check connection","error");
+    });
   }
 
   function toggleWdone(ei,si){
@@ -841,6 +845,12 @@ function App(){
   function handleTouchStart(e){
     touchStartX.current=e.touches[0].clientX;
     touchStartY.current=e.touches[0].clientY;
+    var el=e.target;
+    touchInHScroll.current=false;
+    while(el&&el!==document.body){
+      if(el.dataset&&el.dataset.hscroll){touchInHScroll.current=true;break;}
+      el=el.parentElement;
+    }
   }
   function handleTouchEnd(e){
     if(touchStartX.current===null)return;
@@ -848,7 +858,7 @@ function App(){
     var dy=touchStartY.current-e.changedTouches[0].clientY;
     touchStartX.current=null;
     touchStartY.current=null;
-    if(Math.abs(dx)>Math.abs(dy)){
+    if(!touchInHScroll.current&&Math.abs(dx)>Math.abs(dy)){
       var idx=TAB_ORDER.indexOf(view);
       if(dx>60&&idx<TAB_ORDER.length-1)setView(TAB_ORDER[idx+1]);
       else if(dx<-60&&idx>0)setView(TAB_ORDER[idx-1]);
@@ -1258,7 +1268,7 @@ function App(){
       ),
       recentFoods.length>0?h("div",{style:{marginBottom:14}},
         h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"QUICK ADD"),
-        h("div",{style:{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",msOverflowStyle:"none"}},
+        h("div",{"data-hscroll":"1",style:{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",msOverflowStyle:"none"}},
           recentFoods.map(function(food,i){
             return h("div",{key:i,onClick:function(){
               setNutScan({mode:"manual",result:{name:food.name,calories:food.calories,protein:food.protein,carbs:food.carbs,fat:food.fat},portionMult:1.0,base64:null});
