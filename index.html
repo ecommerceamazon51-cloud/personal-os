@@ -298,6 +298,30 @@ var S={
   nav:{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#08080a",borderTop:"1px solid #1e1e24",display:"flex",justifyContent:"space-around",padding:"8px 0 12px",zIndex:100},
 };
 
+function WeightLineChart(entries){
+  if(!entries||entries.length<2)return null;
+  var sorted=entries.slice().sort(function(a,b){return a.date<b.date?-1:1;});
+  var W=340,H=130,pl=36,pr=10,pt=12,pb=26;
+  var iW=W-pl-pr,iH=H-pt-pb;
+  var weights=sorted.map(function(e){return parseFloat(e.weight);});
+  var minW=Math.min.apply(null,weights),maxW=Math.max.apply(null,weights);
+  var range=maxW-minW||1;
+  var n=sorted.length;
+  function xp(i){return pl+(i/(n-1))*iW;}
+  function yp(w){return pt+(1-(w-minW)/range)*iH;}
+  var linePath="M "+sorted.map(function(e,i){return xp(i).toFixed(1)+" "+yp(e.weight).toFixed(1);}).join(" L ");
+  var areaPath=linePath+" L "+xp(n-1).toFixed(1)+" "+(pt+iH)+" L "+pl+" "+(pt+iH)+" Z";
+  var xLabels=[0,Math.floor((n-1)/2),n-1].filter(function(v,i,a){return a.indexOf(v)===i;});
+  return h("svg",{width:"100%",viewBox:"0 0 "+W+" "+H,style:{overflow:"visible",display:"block"}},
+    h("path",{d:areaPath,fill:C.teal+"1a",stroke:"none"}),
+    h("path",{d:linePath,fill:"none",stroke:C.teal,strokeWidth:"2",strokeLinejoin:"round"}),
+    sorted.map(function(e,i){return h("circle",{key:i,cx:xp(i),cy:yp(e.weight),r:"3",fill:C.teal});}),
+    h("text",{x:pl-4,y:pt+5,textAnchor:"end",fill:C.dim,fontSize:"8",fontFamily:"Courier New"},(maxW%1===0?maxW:maxW.toFixed(1))),
+    h("text",{x:pl-4,y:pt+iH,textAnchor:"end",fill:C.dim,fontSize:"8",fontFamily:"Courier New"},(minW%1===0?minW:minW.toFixed(1))),
+    xLabels.map(function(i){return h("text",{key:i,x:xp(i),y:H-4,textAnchor:"middle",fill:C.dim,fontSize:"7",fontFamily:"Courier New"},fmtDate(sorted[i].date));})
+  );
+}
+
 function BarChart(props){
   var data=props.data,labelKey=props.labelKey,valueKey=props.valueKey,color=props.color,ht=props.height||120;
   var max=Math.max.apply(null,data.map(function(d){return d[valueKey]}));
@@ -458,6 +482,9 @@ function App(){
   var nutLoadingArr=useState(false);var nutLoading=nutLoadingArr[0];var setNutLoading=nutLoadingArr[1];
   var nutRefreshingArr=useState(false);var nutRefreshing=nutRefreshingArr[0];var setNutRefreshing=nutRefreshingArr[1];
   var recentFoodsArr=useState([]);var recentFoods=recentFoodsArr[0];var setRecentFoods=recentFoodsArr[1];
+  var bwLogsArr=useState([]);var bwLogs=bwLogsArr[0];var setBwLogs=bwLogsArr[1];
+  var bwInputArr=useState("");var bwInput=bwInputArr[0];var setBwInput=bwInputArr[1];
+  var bwLoadingArr=useState(false);var bwLoading=bwLoadingArr[0];var setBwLoading=bwLoadingArr[1];
   var pendingScanArr=useState(null);var pendingScan=pendingScanArr[0];var setPendingScan=pendingScanArr[1];
   var nutFormArr=useState({name:"",calories:"",protein:"",carbs:"",fat:""});var nutForm=nutFormArr[0];var setNutForm=nutFormArr[1];
   var apiKeyInputArr=useState("");var apiKeyInput=apiKeyInputArr[0];var setApiKeyInput=apiKeyInputArr[1];
@@ -576,6 +603,19 @@ function App(){
     loadRecentFoods();
   },[view,user,dt]);
 
+  useEffect(function(){
+    if(!user||historyTab!=="weight")return;
+    setBwLoading(true);
+    sb.from("body_weight_logs").select("*").eq("user_id",user.id).order("date",{ascending:false}).limit(90).then(function(r){
+      if(r.data){
+        setBwLogs(r.data);
+        var todayEntry=r.data.find(function(e){return e.date===dt;});
+        if(todayEntry)setBwInput(String(todayEntry.weight));
+      }
+      setBwLoading(false);
+    }).catch(function(){setBwLoading(false);});
+  },[historyTab,user]);
+
   var timerRemaining=timer?timer.remaining:-1;var timerActive=timer?timer.active:false;
   useEffect(function(){
     if(!timerActive||timerRemaining<=0)return;
@@ -644,6 +684,35 @@ function App(){
       });
       var sorted=Object.keys(items).sort(function(a,b){return freq[b]-freq[a];}).slice(0,10);
       setRecentFoods(sorted.map(function(k){return items[k];}));
+    });
+  }
+
+  function logBodyWeight(){
+    var w=parseFloat(bwInput);
+    if(!w||!user)return;
+    var existing=bwLogs.find(function(e){return e.date===dt;});
+    if(existing){
+      setBwLogs(function(p){return p.map(function(e){return e.date===dt?Object.assign({},e,{weight:w}):e;});});
+      sb.from("body_weight_logs").update({weight:w,logged_at:new Date().toISOString()}).eq("id",existing.id).then(function(r){
+        if(r.error)toast("Failed to save weight","error");else toast("Weight updated");
+      });
+    } else {
+      var tempId="temp-"+Date.now();
+      setBwLogs(function(p){return [{id:tempId,date:dt,weight:w,logged_at:new Date().toISOString()}].concat(p);});
+      sb.from("body_weight_logs").insert({user_id:user.id,date:dt,weight:w,logged_at:new Date().toISOString()}).select().then(function(r){
+        if(r.error){toast("Failed to save weight","error");setBwLogs(function(p){return p.filter(function(e){return e.id!==tempId;});});}
+        else if(r.data&&r.data[0])setBwLogs(function(p){return p.map(function(e){return e.id===tempId?r.data[0]:e;});});
+        else toast("Weight logged");
+      });
+      toast("Weight logged");
+    }
+  }
+
+  function deleteBodyWeight(row){
+    setBwLogs(function(p){return p.filter(function(e){return e.id!==row.id;});});
+    if(row.date===dt)setBwInput("");
+    sb.from("body_weight_logs").delete().eq("id",row.id).then(function(r){
+      if(r.error){setBwLogs(function(p){return [row].concat(p);});toast("Delete failed","error");}
     });
   }
 
@@ -1030,7 +1099,7 @@ function App(){
     return h("div",null,
       h("div",{style:S.header},h("div",{style:S.title},"History"),h("div",{style:S.h1},"Progress Tracker")),
       h("div",{style:{display:"flex",gap:6,marginBottom:16,overflowX:"auto",paddingBottom:2}},
-        [{id:"workouts",l:"Workouts"},{id:"prs",l:"PRs"},{id:"streaks",l:"Streaks"},{id:"volume",l:"Volume"},{id:"muscles",l:"Muscles"}].map(function(t){
+        [{id:"workouts",l:"Workouts"},{id:"prs",l:"PRs"},{id:"streaks",l:"Streaks"},{id:"volume",l:"Volume"},{id:"muscles",l:"Muscles"},{id:"weight",l:"Weight"}].map(function(t){
           return h("div",{key:t.id,onClick:function(){setHistoryTab(t.id);},style:pill(historyTab===t.id)},t.l);
         })
       ),
@@ -1106,6 +1175,63 @@ function App(){
             )
           );
         })
+      ):null,
+      historyTab==="weight"?h("div",null,
+        bwLoading?h("div",{style:{textAlign:"center",padding:40,color:C.dim,fontSize:11,letterSpacing:2}},"LOADING..."):null,
+        !bwLoading?h("div",null,
+          h("div",{style:S.card},
+            h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:10}},"LOG TODAY'S WEIGHT"),
+            h("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+              h("input",{type:"number",inputMode:"decimal",placeholder:"lbs",value:bwInput,
+                onChange:function(e){setBwInput(e.target.value);},
+                style:Object.assign({},S.input,{flex:1,padding:"10px 12px",fontSize:16,textAlign:"center"})}),
+              h("div",{onClick:logBodyWeight,style:{padding:"10px 18px",background:C.teal,color:C.bg,fontWeight:700,fontSize:13,borderRadius:6,cursor:"pointer",whiteSpace:"nowrap"}},
+                bwLogs.find(function(e){return e.date===dt;})?"UPDATE":"LOG")
+            )
+          ),
+          bwLogs.length>0?h("div",null,
+            function(){
+              var sorted=bwLogs.slice().sort(function(a,b){return a.date<b.date?-1:1;});
+              var recent30=sorted.slice(-30);
+              var cur=parseFloat(sorted[sorted.length-1].weight);
+              var wk7=recent30.slice(-7);var avg7=wk7.reduce(function(s,e){return s+parseFloat(e.weight);},0)/wk7.length;
+              var mo30start=recent30.length>=2?parseFloat(recent30[0].weight):null;
+              var delta30=mo30start!==null?Math.round((cur-mo30start)*10)/10:null;
+              return h("div",null,
+                h("div",{style:{display:"flex",gap:10,marginBottom:12}},
+                  h("div",{style:{background:C.card,border:"1px solid "+C.border,borderRadius:8,padding:"12px 14px",flex:1,textAlign:"center"}},
+                    h("div",{style:{fontSize:22,fontWeight:700,color:C.teal}},cur),
+                    h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginTop:2}},"CURRENT")),
+                  h("div",{style:{background:C.card,border:"1px solid "+C.border,borderRadius:8,padding:"12px 14px",flex:1,textAlign:"center"}},
+                    h("div",{style:{fontSize:22,fontWeight:700,color:C.white}},avg7.toFixed(1)),
+                    h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginTop:2}},"7-DAY AVG")),
+                  delta30!==null?h("div",{style:{background:C.card,border:"1px solid "+C.border,borderRadius:8,padding:"12px 14px",flex:1,textAlign:"center"}},
+                    h("div",{style:{fontSize:22,fontWeight:700,color:delta30<0?C.green:delta30>0?C.red:C.dim}},(delta30>0?"+":"")+delta30),
+                    h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginTop:2}},"30-DAY")):null
+                ),
+                recent30.length>=2?h("div",{style:Object.assign({},S.card,{padding:"10px 14px"})},
+                  h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:10}},"TREND (last "+recent30.length+" entries)"),
+                  WeightLineChart(recent30)
+                ):null
+              );
+            }()
+          ):null,
+          h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8,marginTop:4}},"HISTORY"),
+          bwLogs.length===0?h("div",{style:Object.assign({},S.card,{textAlign:"center",color:C.dim,padding:32})},
+            h("div",{style:{fontSize:24,marginBottom:8}},"⚖️"),
+            h("div",{style:{fontSize:13}},"No weight data yet — log your first entry above")
+          ):
+          bwLogs.slice(0,30).map(function(row,i){
+            var isToday=row.date===dt;
+            return h("div",{key:row.id||i,style:Object.assign({},S.card,{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",borderLeft:"3px solid "+(isToday?C.teal:C.border)})},
+              h("div",null,
+                h("div",{style:{fontSize:12,fontWeight:600,color:C.white}},row.weight+" lbs"),
+                h("div",{style:{fontSize:10,color:C.dim,marginTop:2}},fmtDate(row.date)+(isToday?" · today":""))
+              ),
+              h("div",{onClick:function(){deleteBodyWeight(row);},style:{color:C.dim,cursor:"pointer",fontSize:18,padding:"4px 8px",flexShrink:0}},"×")
+            );
+          })
+        ):null
       ):null
     );
   }
