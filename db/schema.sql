@@ -293,8 +293,6 @@ CREATE TABLE IF NOT EXISTS public.exercises (
   load_increment_default DECIMAL(5,2),
   load_increment_micro   DECIMAL(5,2),
   -- Per-user override lives in user_exercise_settings (future table).
-  -- This column is a curator-supplied starting point, not a per-user value.
-  load_increment_user    DECIMAL(5,2),
 
   -- Programming role
   -- training_modality is TEXT[] not an enum array; values are:
@@ -357,23 +355,26 @@ CREATE INDEX IF NOT EXISTS idx_exercises_modality_gin
 CREATE INDEX IF NOT EXISTS idx_exercises_demands_gin
   ON public.exercises USING GIN (demands);
 
--- ─── exercise_substitutes ─────────────────────────────────────────────────────
--- Directed substitution graph. (A → B) and (B → A) are separate rows,
--- allowing asymmetric similarity scores and reasons (e.g. B is a regression
--- of A but A is a progression of B).
--- reason is enforced via CHECK rather than an enum (not in user's enum list).
-
-CREATE TABLE IF NOT EXISTS public.exercise_substitutes (
-  exercise_id   UUID        NOT NULL REFERENCES public.exercises(exercise_id) ON DELETE CASCADE,
-  substitute_id UUID        NOT NULL REFERENCES public.exercises(exercise_id) ON DELETE CASCADE,
-  similarity_score DECIMAL(3,2) NOT NULL CHECK (similarity_score BETWEEN 0 AND 1),
-  reason        TEXT        NOT NULL CHECK (reason IN (
+DO $$ BEGIN
+  CREATE TYPE substitute_reason AS ENUM (
     'same_pattern_different_equipment',
     'same_muscles_different_pattern',
     'regression',
     'progression',
     'injury_friendly_variant'
-  )),
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ─── exercise_substitutes ─────────────────────────────────────────────────────
+-- Directed substitution graph. (A → B) and (B → A) are separate rows,
+-- allowing asymmetric similarity scores and reasons (e.g. B is a regression
+-- of A but A is a progression of B).
+
+CREATE TABLE IF NOT EXISTS public.exercise_substitutes (
+  exercise_id   UUID              NOT NULL REFERENCES public.exercises(exercise_id) ON DELETE CASCADE,
+  substitute_id UUID              NOT NULL REFERENCES public.exercises(exercise_id) ON DELETE CASCADE,
+  similarity_score DECIMAL(3,2)   NOT NULL CHECK (similarity_score BETWEEN 0 AND 1),
+  reason        substitute_reason NOT NULL,
   PRIMARY KEY (exercise_id, substitute_id),
   CHECK (exercise_id <> substitute_id)
 );
