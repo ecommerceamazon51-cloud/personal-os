@@ -67,7 +67,7 @@ This is the focused work right now. Source of truth: `workout_module_v1_spec.md`
 **Staged plan (each step independently shippable, live app never breaks):**
 
 1. **Update CLAUDE.md** — done when this file is current.
-2. **Create `exercises` table** per spec Section 18. Seed with 30–50 exercises covering the main movement patterns. Old workout tab keeps using its hardcoded array. **Have human review the first ~10 seeded exercises before batching the rest** — muscle weightings (1.0/0.5/0.25) and movement patterns are easy to get subtly wrong.
+2. **Create `exercises` table** per spec Section 18. Seed with 30–50 exercises covering the main movement patterns. Old workout tab keeps using its hardcoded array. **Have human review the first ~10 seeded exercises before batching the rest.** All authoring decisions (muscle weightings, demands tags, variation_attributes shape, workflow) are governed by `docs/exercise_authoring_conventions.md` — read it before touching seed data.
 3. **Create `body_weight_logs`.** Spec needs it (relative-strength exercises) and the History tab already points at it.
 4. **Create event log + derived state tables** per spec Section 20. Empty for now. Tables: `workout_events` (Layer 1 append-only), `rep_prs`, `weekly_volume`, `stall_state` (Layer 2 derived).
 5. **Dual-write phase.** Every set logged to `workout_logs` also writes to `workout_events`. Old behavior unchanged. New data starts flowing.
@@ -82,6 +82,21 @@ This is the focused work right now. Source of truth: `workout_module_v1_spec.md`
 - **Volume targets are ceilings, not goals** (Section 3). The system discovers MRV from stalls and fatigue. Don't prescribe.
 - **`progression_eligible` boolean** on exercises. Skill drills (martial arts, mobility) get logged but don't enter the rep PR / cascade system.
 - **Frequency.** 2x/week per muscle beats 1x at intermediate+ volumes. Beginners 1x is fine.
+
+---
+
+## Exercise authoring conventions
+
+**Source of truth: `docs/exercise_authoring_conventions.md`**
+
+Read this file before drafting, reviewing, or inserting any rows into `exercises` or `exercise_substitutes`. It covers:
+
+- **Muscle weighting rules** — when to use 1.0 vs 0.5 vs 0.25, and which stabilizers qualify for 0.25 at all
+- **Demands tag vocabulary** — the closed set of valid `demands` strings and what each means
+- **`variation_attributes` shape** — the key/value schema for the JSONB column
+- **Authoring workflow** — how to add exercises to the seed file, the human-review gate before batch inserts, and how to write `exercise_substitutes` rows
+
+This applies to: seeding exercises, writing substitution pairs, building any UI that reads or filters the exercise database, and any query logic that interprets muscle weights or demands tags.
 
 ---
 
@@ -107,6 +122,7 @@ When working on non-workout features, keep two things in mind: the workout migra
 
 - Read this file first.
 - For workout-related work, also read `workout_module_v1_spec.md`.
+- For anything touching the exercise database — seeding, querying, substitution pairs, UI filters, volume calculations — also read `docs/exercise_authoring_conventions.md`.
 - For any task involving Supabase tables, confirm RLS is enabled and policies exist before writing client code that reads/writes those tables.
 - Schema changes: write the SQL, paste it into Supabase SQL Editor, *and* update `db/schema.sql` in the same commit.
 - Don't introduce new dependencies or build steps without flagging the change.
