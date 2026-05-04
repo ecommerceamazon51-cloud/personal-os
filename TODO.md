@@ -203,6 +203,11 @@ _Goal: Track what's happening inside, not just outside._
   - Examples: when batch 3 adds lat pulldown, the chest-supported row from batch 2 should pick up an edge to it; when more lateral work lands, the lateral raise from batch 1 should get substitutes added.
   - Aim: every exercise has ≥ 2 outgoing substitutes before its batch is marked "done."
 
+- [ ] **schema: extend `movement_pattern` enum to include isolation patterns**
+  - Patterns needed: `knee_flexion`, `knee_extension`, `ankle_extension`, `elbow_flexion`, `elbow_extension` — or a generic `isolation` value.
+  - Five exercises in `seed_exercises_batch_3.sql` currently use closest-fit values with `TODO(schema)` comments inline.
+  - Migration: `ALTER TYPE ... ADD VALUE` per new pattern (cannot be inside a transaction with other DDL), then `UPDATE exercises SET movement_pattern_primary = '...'` for those five rows.
+
 ---
 
 ## North Star
