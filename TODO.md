@@ -196,5 +196,14 @@ _Goal: Track what's happening inside, not just outside._
 
 ---
 
+## Seed Data Process
+
+- [ ] **Substitute backfill pass after each new exercise batch**
+  - Each batch's own substitute INSERTs only cover edges from new exercises outward to existing ones. After a batch lands, do a separate backfill pass to add reverse edges and fill gaps in older rows that didn't have enough substitutes at original insert time (e.g., chest-supported row currently has only 1 outgoing edge).
+  - Examples: when batch 3 adds lat pulldown, the chest-supported row from batch 2 should pick up an edge to it; when more lateral work lands, the lateral raise from batch 1 should get substitutes added.
+  - Aim: every exercise has ≥ 2 outgoing substitutes before its batch is marked "done."
+
+---
+
 ## North Star
 One app. Everything a self-reliant person needs to optimize their body, mind, money, and relationships — without hiring 5 different coaches. Clear steps. Built-in accountability. Gets smarter the more you use it.
