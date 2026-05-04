@@ -195,7 +195,7 @@ INSERT INTO public.exercises (
 ) VALUES (
   'aaaaaaaa-0008-0000-0000-000000000001',
   'Goblet Squat',
-  ARRAY['goblet squat', 'DB goblet squat', 'KB goblet squat'],
+  ARRAY['DB goblet squat', 'KB goblet squat', 'dumbbell goblet squat'],
   'lifting',
   'squat', NULL, 'bilateral',
   -- Goblet squat is a regression / warm-up for the squat pattern.
@@ -249,18 +249,19 @@ INSERT INTO public.exercises (
   ARRAY['deadlift', 'conv DL', 'BB deadlift', 'conventional DL'],
   'lifting',
   'hinge', NULL, 'bilateral',
-  -- DECISION (surfaced for confirmation): three muscles at 1.0.
-  -- The deadlift is unusual: it has multiple genuine targets, not one.
-  -- - Glutes 1.0 — primary hip extensor at lockout, the muscle that limits
-  --   the lift for many lifters.
-  -- - Hamstrings 1.0 — primary hip extensor off the floor; also fatigue-
-  --   limiting on heavy sets.
+  -- DECISION (revised after review): two muscles at 1.0, not three.
+  -- - Hamstrings 1.0 — primary hip extensor off the floor; fatigue-limiting
+  --   on heavy sets.
   -- - Lower_back 1.0 — UNIQUE TO DEADLIFT vs other lifts. On squats, the
   --   lower back is a 0.25 stabilizer (supports the bar). On deadlift, the
   --   spinal erectors are loaded under significant moment arm and are often
-  --   what fails first on a heavy attempt. This meets §2's "muscle that
-  --   limits the lift" criterion. Promoting from the 0.25 stabilizer slot
-  --   to the 1.0 target slot is the principled call.
+  --   what fails first on a heavy attempt. Meets §2's "muscle that limits
+  --   the lift" criterion.
+  -- - Glutes 0.5 (DEMOTED from 1.0): glutes are primary at lockout, but for
+  --   most of the ROM hamstrings + erectors do the work, and on heavy sets
+  --   lockout is rarely the failure point. Same reasoning applied to RDL
+  --   below ("if glutes were the target you'd programme a hip thrust")
+  --   applies here — keeping the two lifts internally consistent.
   -- Quads 0.5 — meaningful off the floor, not primary.
   -- Traps_upper 0.5 — heavy isometric to support the bar through the lift;
   --   meaningful synergist that would fatigue and be sore.
@@ -269,14 +270,10 @@ INSERT INTO public.exercises (
   -- Adductors omitted — not meaningful at conventional stance.
   -- Abs omitted — bracing happens but the spinal erectors do the work; abs
   --   at 0.25 here would just be noise.
-  -- This is the only batch-2 exercise with three 1.0s. The conventions
-  -- "default to fewer 1.0s" guidance is a tiebreaker for borderline calls;
-  -- here all three are distinct, primary, and limit-determining, so the
-  -- guidance doesn't bind.
   '[
-    {"muscle_id": "glutes",       "weight": 1.0},
     {"muscle_id": "hamstrings",   "weight": 1.0},
     {"muscle_id": "lower_back",   "weight": 1.0},
+    {"muscle_id": "glutes",       "weight": 0.5},
     {"muscle_id": "quads",        "weight": 0.5},
     {"muscle_id": "traps_upper",  "weight": 0.5},
     {"muscle_id": "forearms",     "weight": 0.25}
@@ -447,7 +444,10 @@ INSERT INTO public.exercises (
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
   'weight_x_reps', TRUE, FALSE,
-  ARRAY[]::TEXT[],
+  -- shoulder_external_rotation: bottom position (bar at chest, elbows tucked
+  -- ~45-75°) is a meaningful ER demand for many lifters; same reasoning that
+  -- got the front squat tagged with ER for the front-rack position.
+  ARRAY['shoulder_external_rotation'],
   '[]'::jsonb,
   '99999999-9999-9999-9999-999999999999',
   '{"incline": "flat", "grip": "pronated"}'::jsonb,
@@ -492,7 +492,10 @@ INSERT INTO public.exercises (
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
   'weight_x_reps', TRUE, FALSE,
-  ARRAY[]::TEXT[],
+  -- Same ER demand as BB bench (bottom position). DB version arguably has a
+  -- larger ER ROM since the dumbbells can travel further than the bar
+  -- allows; same tag captures it adequately.
+  ARRAY['shoulder_external_rotation'],
   '[]'::jsonb,
   '99999999-9999-9999-9999-999999999999',
   '{"incline": "flat", "grip": "pronated"}'::jsonb,
@@ -724,21 +727,34 @@ INSERT INTO public.exercises (
 --   pull_up                 = aaaaaaaa-0002-0000-0000-000000000001
 
 INSERT INTO public.exercise_substitutes (exercise_id, substitute_id, similarity_score, reason) VALUES
+  -- NOTE on within-family squat edges (high-bar ↔ low-bar ↔ front, all barbell):
+  -- These are same-equipment, same-primary-pattern variations differing in bar
+  -- position and muscle distribution. The existing `substitute_reason` enum
+  -- doesn't cleanly fit:
+  --   - `same_pattern_different_equipment` is wrong (equipment is identical).
+  --   - `same_muscles_different_pattern` is the closest available — using it
+  --     here, accepting that "different pattern" stretches to mean "different
+  --     mechanical bias within the squat pattern."
+  -- Followup: propose a `same_pattern_same_equipment_variation` reason to
+  -- the conventions doc owner so within-family barbell variations get a
+  -- proper tag instead of corrupting an existing one. Until then, the
+  -- exercise_family_id link is what truly carries this relationship; the
+  -- reason tag is just the closest-available label for the recommender.
+
   -- ── 6. Low-bar back squat ────────────────────────────────────────────────
-  -- Closest substitute: high-bar back squat (same equipment, same family,
-  -- different muscle distribution).
-  ('aaaaaaaa-0006-0000-0000-000000000001', 'aaaaaaaa-0001-0000-0000-000000000001', 0.85, 'same_pattern_different_equipment'),
-  -- Front squat: same equipment, different bar position, different muscle
-  -- bias. Strong same-family substitute.
-  ('aaaaaaaa-0006-0000-0000-000000000001', 'aaaaaaaa-0007-0000-0000-000000000001', 0.75, 'same_pattern_different_equipment'),
+  -- Closest substitute: high-bar back squat (same family, different muscle
+  -- distribution; see header note on reason tag).
+  ('aaaaaaaa-0006-0000-0000-000000000001', 'aaaaaaaa-0001-0000-0000-000000000001', 0.85, 'same_muscles_different_pattern'),
+  -- Front squat: same family, different bar position, different muscle bias.
+  ('aaaaaaaa-0006-0000-0000-000000000001', 'aaaaaaaa-0007-0000-0000-000000000001', 0.75, 'same_muscles_different_pattern'),
   -- Conventional deadlift: posterior-chain alternative when low-bar squat
   -- not available.
   ('aaaaaaaa-0006-0000-0000-000000000001', 'aaaaaaaa-0009-0000-0000-000000000001', 0.50, 'same_muscles_different_pattern'),
 
   -- ── 7. Front squat ───────────────────────────────────────────────────────
-  ('aaaaaaaa-0007-0000-0000-000000000001', 'aaaaaaaa-0001-0000-0000-000000000001', 0.80, 'same_pattern_different_equipment'),
+  ('aaaaaaaa-0007-0000-0000-000000000001', 'aaaaaaaa-0001-0000-0000-000000000001', 0.80, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0007-0000-0000-000000000001', 'aaaaaaaa-0008-0000-0000-000000000001', 0.65, 'regression'),
-  ('aaaaaaaa-0007-0000-0000-000000000001', 'aaaaaaaa-0006-0000-0000-000000000001', 0.75, 'same_pattern_different_equipment'),
+  ('aaaaaaaa-0007-0000-0000-000000000001', 'aaaaaaaa-0006-0000-0000-000000000001', 0.75, 'same_muscles_different_pattern'),
 
   -- ── 8. Goblet squat ──────────────────────────────────────────────────────
   -- Goblet is itself a regression; substitutes are progressions / nearby.
@@ -751,8 +767,8 @@ INSERT INTO public.exercise_substitutes (exercise_id, substitute_id, similarity_
   -- so batch 1's back squat now connects to the new family rows. (Adding
   -- to the batch-1 row's outgoing edges; non-destructive — these are new
   -- INSERTs, not updates.)
-  ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0006-0000-0000-000000000001', 0.85, 'same_pattern_different_equipment'),
-  ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0007-0000-0000-000000000001', 0.80, 'same_pattern_different_equipment'),
+  ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0006-0000-0000-000000000001', 0.85, 'same_muscles_different_pattern'),
+  ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0007-0000-0000-000000000001', 0.80, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0008-0000-0000-000000000001', 0.65, 'regression'),
 
   -- ── 9. Conventional deadlift ─────────────────────────────────────────────
