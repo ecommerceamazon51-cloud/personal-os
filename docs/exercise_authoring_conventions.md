@@ -4,7 +4,7 @@ This document defines the rules for authoring rows in the `exercises` and
 `exercise_substitutes` tables. It exists because spec §18 defines the schema
 shape but leaves real interpretation room — and bad authoring decisions
 cascade into bad recommendations everywhere downstream. Lock this once, then
-follow it for all 30–50 seed exercises.
+follow it for all seed exercises.
 
 Source of truth: this doc. If it conflicts with anything in `CLAUDE.md`,
 update `CLAUDE.md`.
@@ -39,7 +39,8 @@ Concrete examples:
 | Slightly different foot width on leg press | Same row, no attribute |
 
 When in doubt, make it a separate row. The recommender benefits from
-granularity; the cost is a few more rows in a table that maxes out at ~50.
+granularity; the cost is a few more rows in a table whose total size is
+governed by §12's functional-redundancy bar, not a fixed cap.
 
 ---
 
@@ -283,5 +284,15 @@ For each new exercise, in order:
 - Do not flatten variations into one row with averaged muscle weights.
 - Do not author in kg.
 - Do not skip substitutes.
-- Do not exceed ~50 total exercises in v1. If you're past 40 and still
-  adding, stop and ask whether the marginal exercise earns its row.
+- Do not author exercises without a clear functional reason. There is no
+  hard cap on total exercises in v1; depth is determined by:
+    - Equipment coverage (full gym, home gym, bodyweight-only)
+    - Progression-ladder completeness (regression → main → progression
+      within a family, so beginners and advanced users have appropriate
+      starting points and rotation targets per spec §10)
+    - Training-level coverage (easier variants for fatigued/deloading
+      users, harder variants for advanced lifters)
+  Reassess scope every ~25 exercises rather than at a fixed total. If a
+  proposed exercise is functionally redundant with one already in the DB
+  (no new pattern, no new equipment, no new difficulty tier, no new
+  muscle bias), don't author it.
