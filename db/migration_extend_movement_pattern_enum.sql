@@ -30,13 +30,19 @@
 -- can stay unused). Don't try to DROP TYPE.
 -- =============================================================================
 
-BEGIN;
-
 -- ─── Add new enum values ────────────────────────────────────────────────────
--- ALTER TYPE ... ADD VALUE is not transactional in some Postgres versions
--- (< 12). Supabase runs current Postgres, so this is safe inside the BEGIN.
--- If this migration is ever ported to an older Postgres, split each ADD VALUE
--- into its own statement OUTSIDE the transaction.
+-- IMPORTANT: ALTER TYPE ADD VALUE and any statement that REFERENCES the new
+-- value cannot share a transaction. Postgres rejects this with error 55P04
+-- ("unsafe use of new value ... New enum values must be committed before
+-- they can be used"), even on current versions. This file is therefore
+-- structured as two parts: the ADD VALUE statements run on their own
+-- (auto-committed, no BEGIN/COMMIT), then a separate transaction handles
+-- the UPDATEs that reference them.
+--
+-- To apply: run Part 1 first, wait for it to complete, then run Part 2.
+-- Do NOT paste the whole file as a single query — it will fail.
+
+-- ─── PART 1: Add new enum values (run as its own query, no transaction) ────
 
 -- Isolation patterns (single-joint movements). The squat/hinge/push/pull
 -- patterns describe multi-joint compounds; isolation work needs its own
@@ -65,6 +71,13 @@ ALTER TYPE movement_pattern ADD VALUE IF NOT EXISTS 'shoulder_abduction';
 -- author cleanly.
 ALTER TYPE movement_pattern ADD VALUE IF NOT EXISTS 'anti_extension';
 ALTER TYPE movement_pattern ADD VALUE IF NOT EXISTS 'anti_lateral_flexion';
+
+-- ─── PART 2: Update existing rows (run as a separate query) ─────────────────
+-- The ALTER TYPE statements above must be committed before this part runs.
+-- These UPDATEs are wrapped in a transaction so all 6 succeed-or-fail
+-- together.
+
+BEGIN;
 
 -- ─── Update existing rows from closest-fit stubs to correct patterns ────────
 
