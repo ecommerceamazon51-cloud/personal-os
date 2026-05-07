@@ -174,10 +174,16 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE TYPE movement_pattern AS ENUM (
+    -- Compound patterns
     'squat', 'hinge', 'horizontal_push', 'vertical_push',
     'horizontal_pull', 'vertical_pull', 'lunge_split', 'carry',
-    'rotation', 'anti_rotation', 'plyometric', 'locomotion',
-    'skill', 'mobility'
+    -- Isolation patterns (single-joint)
+    'knee_flexion', 'knee_extension', 'elbow_flexion', 'elbow_extension',
+    'ankle_plantarflexion', 'shoulder_abduction',
+    -- Core / anti-patterns
+    'rotation', 'anti_rotation', 'anti_extension', 'anti_lateral_flexion',
+    -- Other
+    'plyometric', 'locomotion', 'skill', 'mobility'
   );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
