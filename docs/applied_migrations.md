@@ -15,3 +15,23 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - Zero exercises referencing non-existent muscle_ids
   - Display names verified user-friendly for renames (Chest, Lower Back, Abs, etc.)
 - **Notes:** Schema-only changes. Per-exercise muscle distribution re-authoring deferred to PR B.
+
+## PR B — Muscle Taxonomy v2 Exercise Re-Authoring
+- **File:** `db/migration_reseed_exercises_v2.sql`
+- **PR:** #10
+- **Merged to main:** 2026-05-15
+- **Applied to Supabase:** 2026-05-15
+- **Verification:** All 6 verification queries passed
+  - Total exercises: 65
+  - Total substitution edges: ~150–165
+  - Zero exercises referencing group-level muscle_ids
+  - Zero exercises referencing non-existent muscle_ids
+  - `head_emphasis_notes` populated on all 65 exercises (0 NULL)
+  - Pilot 5 spot-check matched expected muscle counts (Squat 15, Pull-Up 18, Lateral Raise 6, BSS 20, Leg Press 11)
+- **Notes:** Required a follow-up fix in PR #11 (combined TRUNCATE statements) before successful application. First apply attempt failed with FK constraint error 0A000.
+
+## PR #11 — TRUNCATE Syntax Fix (reseed migration)
+- **File:** `db/migration_reseed_exercises_v2.sql`
+- **PR:** #11
+- **Merged to main:** 2026-05-15
+- **Notes:** Two-line fix combining sequential TRUNCATE statements into one. Resolved FK constraint blocker on PR B migration. Not separately applied to Supabase — fix was applied as part of the re-run of the corrected migration.
