@@ -11,9 +11,8 @@
 
 BEGIN;
 
--- Clear dependent table first (FK: exercise_substitutes.exercise_id → exercises)
-TRUNCATE public.exercise_substitutes;
-TRUNCATE public.exercises;
+-- Clear both tables in one statement to satisfy FK constraint
+TRUNCATE TABLE public.exercise_substitutes, public.exercises;
 
 -- =========================================================================
 -- Source: v1 draft (exercises 1-5)
