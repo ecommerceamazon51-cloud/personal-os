@@ -1,15 +1,15 @@
 -- =============================================================================
 -- Seed Exercises — Batch 3 (12 exercises: lifting library completion)
+-- Updated for muscle taxonomy v2 — per-head distributions and head_emphasis_notes added.
 -- =============================================================================
 -- Purpose: close major coverage gaps in the lifting domain after batch 2.
--- After this batch the DB has 29 exercises (batch 1: 5, batch 2: 12, batch 3:
--- 12). Conventions §12 caps v1 at ~50, leaving ~20 slots for batch 4+.
+-- After this batch the DB has 29 exercises (batch 1: 5, batch 2: 12, batch 3: 12).
 --
 -- Mix:
 --   Push completion
 --    18.  Incline Barbell Bench Press
 --    19.  Incline Dumbbell Bench Press
---    20.  Dip (parallel-bar, chest-bias forward lean)
+--    20.  Dip (parallel-bar, triceps-bias upright torso — revised default)
 --   Pull completion
 --    21.  Chin-Up (supinated)
 --    22.  Lat Pulldown
@@ -23,35 +23,22 @@
 --    28.  Triceps Pushdown (Cable)
 --    29.  Dumbbell Hammer Curl
 --
--- Conventions adhered to (see docs/exercise_authoring_conventions.md):
---   - §1: variations are separate rows. Inclines join bench_family. Chin-up
---     joins pullup_family with grip: supinated. Hammer curl gets its own
---     family (different muscle weighting from BB curl — brachialis/forearm
---     bias).
---   - §2: muscle-weighting discipline. 1.0 only for clear targets. Surfaced
---     decisions inline where judgment was required (chin-up biceps, dip
---     chest, etc.).
---   - §3: demands drawn from the closed vocabulary. No new tags introduced.
---   - §4: variation_attributes uses established keys only.
---   - §5: all load_increment values in lbs.
---   - §6: 2-4 aliases per exercise; no duplicates of name field.
---   - §10: directed substitutes; cross-batch refs use batch-1 / batch-2 UUIDs.
+-- Conventions adhered to (see docs/exercise_authoring_conventions.md v2):
+--   - §1: variations are separate rows.
+--   - §13: all muscle_ids are per-head or singletons; no group references.
+--   - §14: seven biomechanical patterns applied throughout.
+--   - §2: comprehensive 0.25 authoring; intermediate weights used throughout.
 --
--- Decisions confirmed in chat before drafting / revised at v2:
---   - Dip authored as TRIPCEPS-BIAS (upright torso) default per v2 review;
---     chest-bias forward-lean variant would be a separate row in same family.
---     Reasoning: typical commercial gym geometry forces upright torso, making
---     triceps-bias the realistic default. (v1 had chest-bias; revised in v2.)
---   - Chin-up biceps at 1.0 (supinated grip → biceps co-limit with lats).
---   - Hammer curl gets its own row (not folded into BB curl aliases).
---   - Lat pulldown is NOT a regression of pull-up; treated as
---     same_pattern_different_equipment.
---   - Five exercises (leg curl, leg extension, calf raise, BB curl, tricep
---     pushdown) use awkward movement_pattern values pending a schema enum
---     extension. TODO(schema) comments inline; followup tracked in TODO.md.
+-- Note on movement_pattern values for exercises 24-28: the movement_pattern enum
+-- was extended in PR #4 to include knee_flexion, knee_extension, ankle_extension,
+-- elbow_flexion, elbow_extension. The column values in these INSERTs retain the
+-- original placeholder values per Rule 7 (only muscles + head_emphasis_notes
+-- are modified in PR B). The live DB rows were updated by the PR #4 migration.
 --
+-- Dip default: revised to triceps-bias (upright torso) in batch 3 v2 review.
+-- Chin-up biceps: 1.0 on both heads (supinated grip = biceps co-limits with lats).
 -- All `progression_eligible` = TRUE.
--- All `authored_by` = 'system', `verified` = FALSE — pending review.
+-- All `authored_by` = 'system', `verified` = FALSE.
 -- =============================================================================
 
 -- Pre-generated UUIDs.
@@ -70,7 +57,7 @@
 --   pushdown_family     = 55555555-6666-7777-8888-999999999999
 --   hammer_curl_family  = 66666666-7777-8888-9999-aaaaaaaaaaaa
 --
--- Exercise IDs (continuing aaaaaaaa-XXXX-... scheme):
+-- Exercise IDs:
 --   incline_bb_bench    = aaaaaaaa-0018-0000-0000-000000000001
 --   incline_db_bench    = aaaaaaaa-0019-0000-0000-000000000001
 --   dip                 = aaaaaaaa-0020-0000-0000-000000000001
@@ -90,6 +77,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -103,35 +91,36 @@ INSERT INTO public.exercises (
   ARRAY['incline bench', 'incline BB bench', 'incline barbell press'],
   'lifting',
   'horizontal_push', NULL, 'bilateral',
-  -- DECISION (surfaced for confirmation): movement_pattern_primary stays
-  -- 'horizontal_push' even at 30-45° incline. The schema's available patterns
-  -- are horizontal_push and vertical_push; an incline press is mechanically
-  -- between the two but closer to horizontal_push for muscle action (chest
-  -- still primary, not delts). Going vertical_push would mis-categorize this
-  -- alongside OHP. If a "diagonal_push" pattern is later added, revisit.
-  --
-  -- Chest 1.0 — still the target on incline (specifically upper chest fibers,
-  -- but at our muscle-id resolution it's just 'chest').
-  -- Front_delts 0.5 → could argue 1.0 here: incline shifts noticeable load
-  -- onto front delts, and on a steep incline (45°+) some lifters' delts
-  -- co-limit with chest. Sticking with 0.5 per §2 default-to-fewer-1.0s,
-  -- consistent with flat bench. Worth revisiting if user feedback shows
-  -- inclines feel like a delt lift.
-  -- Triceps 0.5 — same as flat bench.
+  -- Incline (~30-45°) shifts emphasis to pectorals_clavicular (upper chest) and
+  -- increases anterior delt contribution. pectorals_clavicular rises to 1.0
+  -- (the defining target of incline pressing). pectorals_sternal drops to 0.7
+  -- (still works but secondary to upper fibers). pectorals_abdominal drops to 0.3
+  -- (minimal at incline). delts_anterior rises to 0.6 (more shoulder-flexion
+  -- component than flat bench; can co-limit at steep inclines).
+  -- triceps_long slightly higher than flat bench (shoulder more flexed = long head
+  -- on slightly more stretch).
   '[
-    {"muscle_id": "chest",       "weight": 1.0},
-    {"muscle_id": "front_delts", "weight": 0.5},
-    {"muscle_id": "triceps",     "weight": 0.5}
+    {"muscle_id": "pectorals_clavicular",       "weight": 1.0},
+    {"muscle_id": "pectorals_sternal",          "weight": 0.7},
+    {"muscle_id": "pectorals_abdominal",        "weight": 0.3},
+    {"muscle_id": "triceps_lateral",            "weight": 0.6},
+    {"muscle_id": "triceps_long",               "weight": 0.6},
+    {"muscle_id": "triceps_medial",             "weight": 0.5},
+    {"muscle_id": "delts_anterior",             "weight": 0.6},
+    {"muscle_id": "serratus_anterior",          "weight": 0.3},
+    {"muscle_id": "rotator_cuff_subscapularis", "weight": 0.25},
+    {"muscle_id": "forearms_grip",              "weight": 0.25}
   ]'::jsonb,
+  '{
+    "pectorals_clavicular": "Upper (clavicular) fibers are the target of incline pressing. The inclined angle shifts the line of force toward shoulder flexion, which is what the clavicular head is built for.",
+    "pectorals_sternal": "Still active but secondary to the upper chest — the inclined angle shifts horizontal adduction emphasis away from the sternal fibers.",
+    "delts_anterior": "More contribution than flat bench because the inclined angle adds a shoulder-flexion component to the press. At steep inclines (45°+) the delts can co-limit with the upper chest.",
+    "triceps_long": "Shoulder is more flexed than flat bench, putting the long head in a slightly longer line of pull. More long head work here than on flat bench."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
   'weight_x_reps', TRUE, FALSE,
-  -- shoulder_external_rotation: same logic as flat bench (review-applied
-  -- to flat bench in batch 2). Bottom position loads ER.
-  -- shoulder_flexion: incline angle pushes the press more toward shoulder
-  -- flexion than flat bench does — meaningful enough to tag here but not
-  -- on flat.
   ARRAY['shoulder_external_rotation', 'shoulder_flexion'],
   '[]'::jsonb,
   '99999999-9999-9999-9999-999999999999',
@@ -145,6 +134,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -158,14 +148,26 @@ INSERT INTO public.exercises (
   ARRAY['incline DB bench', 'incline dumbbell press', 'DB incline press'],
   'lifting',
   'horizontal_push', NULL, 'bilateral',
-  -- Same muscle weights as incline BB bench. Differences (greater stretch,
-  -- unilateral stabilization) are not visible at the 1.0/0.5/0.25 resolution
-  -- — same logic as flat BB vs flat DB bench (batch 2).
+  -- Same primary targets as incline BB bench. Greater stretch at the bottom
+  -- (DBs can travel below shoulder height) noted in head_emphasis_notes.
+  -- At per-head distribution resolution the targets are identical.
   '[
-    {"muscle_id": "chest",       "weight": 1.0},
-    {"muscle_id": "front_delts", "weight": 0.5},
-    {"muscle_id": "triceps",     "weight": 0.5}
+    {"muscle_id": "pectorals_clavicular",       "weight": 1.0},
+    {"muscle_id": "pectorals_sternal",          "weight": 0.7},
+    {"muscle_id": "pectorals_abdominal",        "weight": 0.3},
+    {"muscle_id": "triceps_lateral",            "weight": 0.6},
+    {"muscle_id": "triceps_long",               "weight": 0.6},
+    {"muscle_id": "triceps_medial",             "weight": 0.5},
+    {"muscle_id": "delts_anterior",             "weight": 0.6},
+    {"muscle_id": "serratus_anterior",          "weight": 0.3},
+    {"muscle_id": "rotator_cuff_subscapularis", "weight": 0.25},
+    {"muscle_id": "forearms_grip",              "weight": 0.25}
   ]'::jsonb,
+  '{
+    "pectorals_clavicular": "Upper chest is the target — same as incline BB bench. The DB version allows a deeper stretch at the bottom, which may increase the stretch-mediated hypertrophy stimulus.",
+    "delts_anterior": "More pronounced than flat bench. At steep inclines the delts can become co-limiting with the upper chest.",
+    "triceps_long": "Inclined angle puts the shoulder in more flexion than flat bench, increasing long head contribution vs flat pressing."
+  }'::jsonb,
   'dumbbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
@@ -174,17 +176,16 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '99999999-9999-9999-9999-999999999999',
   '{"incline": "incline", "grip": "pronated"}'::jsonb,
-  -- Note: many users rotate to neutral grip on DB inclines. If wanting to
-  -- track that as a distinct lift, separate row in same family.
   'stretched',
   'system', FALSE
 );
 
--- ─── 20. Dip (Parallel-Bar, Chest-Bias) ─────────────────────────────────────
+-- ─── 20. Dip (Parallel-Bar, Triceps-Bias) ───────────────────────────────────
 INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -198,54 +199,37 @@ INSERT INTO public.exercises (
   ARRAY['parallel bar dip', 'tricep dip', 'weighted dip'],
   'lifting',
   'horizontal_push', 'vertical_push', 'bilateral',
-  -- DECISION (revised after review): triceps-bias variant as the default,
-  -- not chest-bias. Reasoning: at typical commercial gyms with assisted-dip
-  -- stations or shorter parallel bars, the geometry forces a more upright
-  -- torso, which shifts emphasis to triceps. The chest-bias forward-lean
-  -- variant requires long bars and clearance that most users won't have —
-  -- treating it as the exception, not the default. If chest-bias dip is
-  -- added later, it's a separate row in this family with chest 1.0 /
-  -- triceps 0.5 / front_delts 0.5.
-  --
-  -- Triceps 1.0 — target on upright dip (elbow extension is the prime
-  -- mover with vertical torso).
-  -- Chest 0.5 — meaningful synergist; even on upright dip the chest still
-  -- contributes to shoulder extension/adduction at the bottom. Not a
-  -- 0.25 stabilizer — it does real work.
-  -- Front_delts 0.5 — same logic as before; deeper shoulder extension
-  -- at the bottom than bench, real synergist contribution.
-  --
-  -- movement_pattern_primary stays 'horizontal_push' (relative to torso the
-  -- press direction is forward) with secondary 'vertical_push' (the body
-  -- moves vertically). This pattern combo accurately captures that dips
-  -- share recruitment with both bench AND OHP — unchanged from v1.
+  -- Triceps-bias upright torso default. All three triceps heads are near-primary:
+  -- triceps_lateral 1.0 (most active in elbow extension at neutral shoulder).
+  -- triceps_long 0.9 (shoulder extension at the bottom + full elbow bend = good
+  -- stretch for the long head even without overhead position).
+  -- triceps_medial 0.8 (active throughout, especially in final lockout).
+  -- Chest contributes to shoulder extension/adduction: pectorals_sternal 0.5,
+  -- pectorals_clavicular 0.25 (less upper chest on upright dip).
+  -- delts_anterior 0.4 — assists the push-up motion.
   '[
-    {"muscle_id": "triceps",     "weight": 1.0},
-    {"muscle_id": "chest",       "weight": 0.5},
-    {"muscle_id": "front_delts", "weight": 0.5}
+    {"muscle_id": "triceps_lateral",            "weight": 1.0},
+    {"muscle_id": "triceps_long",               "weight": 0.9},
+    {"muscle_id": "triceps_medial",             "weight": 0.8},
+    {"muscle_id": "pectorals_sternal",          "weight": 0.5},
+    {"muscle_id": "pectorals_clavicular",       "weight": 0.25},
+    {"muscle_id": "delts_anterior",             "weight": 0.4},
+    {"muscle_id": "serratus_anterior",          "weight": 0.3},
+    {"muscle_id": "rotator_cuff_subscapularis", "weight": 0.25},
+    {"muscle_id": "forearms_grip",              "weight": 0.25}
   ]'::jsonb,
+  '{
+    "triceps_long": "Long head is stretched at the bottom of the dip — elbow bent + shoulder in mild extension gives it a good ROM. This is why dips are among the best compound exercises for overall triceps mass despite not being overhead.",
+    "pectorals_sternal": "Even on upright dip, pecs contribute to shoulder adduction through the press. Forward lean (chest-bias variant) would raise this to ~1.0 and drop triceps.",
+    "delts_anterior": "Assists the push-up motion, particularly in the upper range where shoulder flexion becomes a contributor."
+  }'::jsonb,
   'bodyweight', NULL, 2.50, 1.25,
-  -- Same load_increment defaults as pull-up (bodyweight-loaded per §5).
   ARRAY['strength', 'hypertrophy'],
-  -- DECISION (revised): default_role downgraded from 'main_compound' to
-  -- 'secondary_compound'. Triceps-dominant upright dip is closer to a
-  -- strong accessory than a main lift for most lifters; pairs as a
-  -- triceps-focused supplement to a horizontal pressing main lift.
   'secondary_compound', 'early',
   'weighted_bodyweight', TRUE, TRUE,
-  -- relative_to_bodyweight = TRUE: bodyweight is part of the working load.
-  -- shoulder_flexion is wrong here (movement is shoulder extension, not
-  -- flexion). shoulder_external_rotation is real at the bottom of a deep
-  -- dip — applying same logic as bench.
   ARRAY['shoulder_external_rotation'],
   '[]'::jsonb,
   'dddddddd-dddd-dddd-dddd-dddddddddddd',
-  -- variation_attributes: capturing the chest-vs-tricep distinction.
-  -- Adding a new value 'chest_lean' to no established key wouldn't be
-  -- right; using the closest existing concept (forward lean as a stance
-  -- variable doesn't exist either). Leaving NULL and letting the row name
-  -- + family carry the distinction. If we later add a `torso` key to the
-  -- conventions doc, revisit.
   NULL,
   'stretched',
   'system', FALSE
@@ -256,6 +240,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -269,37 +254,41 @@ INSERT INTO public.exercises (
   ARRAY['chinup', 'chin up', 'supinated pull-up'],
   'lifting',
   'vertical_pull', NULL, 'bilateral',
-  -- DECISION (confirmed in chat): biceps 1.0, not 0.5.
-  -- Supinated grip places biceps in their strongest mechanical position
-  -- (forearm supinated → long head + short head fully engaged). On a heavy
-  -- chin-up many lifters fail because of bicep fatigue, not lat fatigue.
-  -- That meets §2's "muscle that limits the lift" criterion. This is also
-  -- what differentiates chin-up from pull-up at the muscle-weighting level —
-  -- without it, why have separate rows? (§1: separate rows when muscle
-  -- weightings differ.)
-  --
-  -- Lats 1.0 — still a clear target. Two 1.0s here is a deliberate call
-  -- (chin-up genuinely has two co-limiting prime movers). Same logic that
-  -- gave conventional DL two 1.0s after batch 2 review.
-  --
-  -- Other synergists same as pull-up. Forearms drops because supinated grip
-  -- is less grip-intensive than pronated (the bar sits in the palm
-  -- differently); not enough to keep the 0.25 entry.
+  -- Supinated grip → biceps dominant (Pattern 4: supinated = biceps long head
+  -- in strongest position). biceps_long and biceps_short both at 1.0 —
+  -- on heavy sets many lifters feel bicep fatigue before lat fatigue.
+  -- That meets conventions "muscle that limits the lift" criterion.
+  -- This is what separates chin-up from pull-up at per-head resolution.
+  -- brachialis 0.5 (less dominant than pronated pull-up; biceps take over).
+  -- Lat region: supinated at shoulder-width → balanced, lats_lower slightly dominant.
+  -- forearms_grip 0.5 (supinated grip is slightly less grip-intensive than pronated).
   '[
-    {"muscle_id": "lats",            "weight": 1.0},
-    {"muscle_id": "biceps",          "weight": 1.0},
-    {"muscle_id": "rhomboids",       "weight": 0.5},
-    {"muscle_id": "traps_mid_lower", "weight": 0.5},
-    {"muscle_id": "rear_delts",      "weight": 0.25},
-    {"muscle_id": "abs",             "weight": 0.25}
+    {"muscle_id": "lats_lower",                 "weight": 1.0},
+    {"muscle_id": "lats_upper",                 "weight": 0.8},
+    {"muscle_id": "teres_major",                "weight": 0.7},
+    {"muscle_id": "biceps_long",                "weight": 1.0},
+    {"muscle_id": "biceps_short",               "weight": 0.9},
+    {"muscle_id": "brachialis",                 "weight": 0.5},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.4},
+    {"muscle_id": "forearms_grip",              "weight": 0.5},
+    {"muscle_id": "rhomboids",                  "weight": 0.5},
+    {"muscle_id": "traps_middle",               "weight": 0.5},
+    {"muscle_id": "traps_lower",                "weight": 0.5},
+    {"muscle_id": "delts_posterior",            "weight": 0.3},
+    {"muscle_id": "rotator_cuff_infraspinatus", "weight": 0.25},
+    {"muscle_id": "rectus_abdominis",           "weight": 0.25},
+    {"muscle_id": "obliques",                   "weight": 0.25}
   ]'::jsonb,
+  '{
+    "biceps_long": "Supinated grip is the biceps long head''s strongest position. This is the defining difference between chin-up and pull-up — many lifters reach bicep failure before lat failure on heavy sets.",
+    "biceps_short": "Both heads are highly active supinated. Together they often co-limit with the lats on near-max sets — two 1.0 targets is the correct call here.",
+    "brachialis": "Less dominant than on pronated pull-up because the supinated biceps take over elbow flexion. Still contributes but is no longer the primary elbow flexor.",
+    "lats_lower": "Supinated shoulder-width grip drives similar lower-lat emphasis to the pronated pull-up. Wide-grip pronated work shifts emphasis toward upper lats."
+  }'::jsonb,
   'bodyweight', NULL, 2.50, 1.25,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
   'weighted_bodyweight', TRUE, TRUE,
-  -- shoulder_flexion: applies less than pull-up (bar starts closer to face
-  -- on supinated grip), but still in the demand. Keeping for consistency
-  -- with pull-up. grip_intensive dropped (see muscle reasoning).
   ARRAY['shoulder_flexion'],
   '[]'::jsonb,
   '22222222-2222-2222-2222-222222222222',
@@ -313,6 +302,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -326,23 +316,31 @@ INSERT INTO public.exercises (
   ARRAY['pulldown', 'cable pulldown', 'wide-grip pulldown'],
   'lifting',
   'vertical_pull', NULL, 'bilateral',
-  -- Same muscle pattern as pull-up minus the bodyweight component. Lats 1.0,
-  -- standard pulling synergists at 0.5. Biceps 0.5 (not 1.0 like chin-up) —
-  -- pronated/wide grip default mirrors pull-up biology.
-  -- No abs entry — pulldown is seated/supported, no anti-extension demand.
-  -- No rear_delts 0.25 — the cable angle on a typical pulldown machine
-  -- emphasizes lats more than rear delts; rear delts contribute but at
-  -- below-stabilizer level.
+  -- Wide pronated grip → upper-lat dominant (Pattern 3: wide = upper 1.0,
+  -- lower 0.6-0.7). Pronated grip → brachialis dominant over biceps (Pattern 4).
+  -- Machine/seated removes abs and core stabilizer entries (Pattern 5).
+  -- No forearms_wrist_flexors — cable handles reduce the wrist-stability demand
+  -- vs hanging from a bar.
   '[
-    {"muscle_id": "lats",            "weight": 1.0},
-    {"muscle_id": "biceps",          "weight": 0.5},
-    {"muscle_id": "rhomboids",       "weight": 0.5},
-    {"muscle_id": "traps_mid_lower", "weight": 0.5}
+    {"muscle_id": "lats_upper",                 "weight": 1.0},
+    {"muscle_id": "lats_lower",                 "weight": 0.7},
+    {"muscle_id": "teres_major",                "weight": 0.7},
+    {"muscle_id": "brachialis",                 "weight": 0.7},
+    {"muscle_id": "biceps_long",                "weight": 0.5},
+    {"muscle_id": "biceps_short",               "weight": 0.5},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.4},
+    {"muscle_id": "forearms_grip",              "weight": 0.5},
+    {"muscle_id": "rhomboids",                  "weight": 0.5},
+    {"muscle_id": "traps_middle",               "weight": 0.5},
+    {"muscle_id": "traps_lower",                "weight": 0.4},
+    {"muscle_id": "delts_posterior",            "weight": 0.3}
   ]'::jsonb,
+  '{
+    "lats_upper": "Wide-grip pulldown is upper-lat dominant — the wide hand placement creates a pulling angle that loads upper lat fibers preferentially. Switch to close-grip or neutral-grip attachment for lower lat emphasis.",
+    "brachialis": "Pronated wide grip emphasizes brachialis over biceps. If biceps development is the goal, switch to a supinated or neutral close-grip pulldown.",
+    "traps_lower": "Active during scapular depression at the bottom of the rep. Cue: pull shoulder blades down and into the back pockets to increase lower trap engagement."
+  }'::jsonb,
   'cable', 'lat_pulldown', 10.00, 5.00,
-  -- equipment_specific = 'lat_pulldown': common machine type, same pattern
-  -- as schema's 'leg_press' specific tag. load_increment 10/5 per §5
-  -- machine defaults; cable stacks typically come in 10-lb increments.
   ARRAY['hypertrophy', 'strength'],
   'secondary_compound', 'anywhere',
   'weight_x_reps', TRUE, FALSE,
@@ -350,8 +348,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
   '{"grip": "pronated"}'::jsonb,
-  -- Many users do pulldowns supinated or neutral — those would be separate
-  -- rows in this family per §1.
   'stretched',
   'system', FALSE
 );
@@ -361,6 +357,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -374,19 +371,29 @@ INSERT INTO public.exercises (
   ARRAY['cable row', 'seated row', 'low cable row'],
   'lifting',
   'horizontal_pull', NULL, 'bilateral',
-  -- Mirrors chest-supported DB row's muscle profile (the seated/supported
-  -- horizontal pull). Lats 1.0, mid-back synergists 0.5, biceps 0.5. No
-  -- lower_back 0.5 (seated supports the spine) and no forearms 0.25 (cable
-  -- handles are typically more wrist-friendly than a barbell, less grip-
-  -- limiting). Same reasoning batch 2 used to drop those for chest-supported
-  -- row vs BB row.
+  -- Neutral V-bar grip (default) + machine/seated support.
+  -- Neutral grip → brachialis dominant (Pattern 4: neutral = brachialis 0.8).
+  -- Rows = balanced lats (Pattern 3): lats_lower 1.0, lats_upper 0.8.
+  -- Machine support removes spinal_erectors (Pattern 5).
+  -- Cable handles are wrist-friendly; forearms_grip at 0.4 (below BB row's 0.6).
   '[
-    {"muscle_id": "lats",            "weight": 1.0},
-    {"muscle_id": "rhomboids",       "weight": 0.5},
-    {"muscle_id": "traps_mid_lower", "weight": 0.5},
-    {"muscle_id": "rear_delts",      "weight": 0.5},
-    {"muscle_id": "biceps",          "weight": 0.5}
+    {"muscle_id": "lats_lower",                 "weight": 1.0},
+    {"muscle_id": "lats_upper",                 "weight": 0.8},
+    {"muscle_id": "teres_major",                "weight": 0.6},
+    {"muscle_id": "rhomboids",                  "weight": 0.6},
+    {"muscle_id": "traps_middle",               "weight": 0.5},
+    {"muscle_id": "traps_lower",                "weight": 0.4},
+    {"muscle_id": "delts_posterior",            "weight": 0.5},
+    {"muscle_id": "brachialis",                 "weight": 0.8},
+    {"muscle_id": "biceps_long",                "weight": 0.6},
+    {"muscle_id": "biceps_short",               "weight": 0.6},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.4},
+    {"muscle_id": "forearms_grip",              "weight": 0.4}
   ]'::jsonb,
+  '{
+    "brachialis": "Neutral V-bar grip shifts elbow flexion to brachialis — same principle as hammer curl. You get upper-back + brachialis development in one movement.",
+    "lats_lower": "Elbows close to the body on a neutral row favor lower lat emphasis. For more upper lats, use a wider pronated grip."
+  }'::jsonb,
   'cable', 'cable_row_machine', 10.00, 5.00,
   ARRAY['hypertrophy', 'strength'],
   'secondary_compound', 'anywhere',
@@ -395,8 +402,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   'ffffffff-ffff-ffff-ffff-ffffffffffff',
   '{"grip": "neutral"}'::jsonb,
-  -- Default neutral handle (V-bar) — most common cable row setup. Wide-grip
-  -- pronated cable row would be a separate row in this family.
   'stretched',
   'system', FALSE
 );
@@ -406,6 +411,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -419,19 +425,25 @@ INSERT INTO public.exercises (
   ARRAY['leg curl', 'prone leg curl', 'hamstring curl'],
   'lifting',
   'hinge', NULL, 'bilateral',
-  -- TODO(schema): movement_pattern_primary should be 'knee_flexion' (or a
-  -- generic 'isolation') once the movement_pattern enum is extended. Using
-  -- 'hinge' as the closest-available fit; see TODO.md for the migration
-  -- followup. Not a great fit — knee flexion isolation is mechanically
-  -- different from hip-hinge.
-  --
-  -- Hamstrings 1.0 — uncontested target. Pure isolation, no synergists at
-  -- 0.5: gastrocnemius (calves) crosses the knee and contributes minor
-  -- flexion, but not enough to track here. Glutes do nothing on a lying
-  -- curl (hip stays extended on the pad).
+  -- Machine knee flexion isolation. All hamstring heads cross the knee.
+  -- Lying (prone) position = hip extended → bi-articular heads (bf_long, semis)
+  -- are also stretched at the hip, giving them better force-generating length.
+  -- bf_short only crosses the knee; still contributes fully to knee flexion
+  -- but without the hip-extension pre-stretch advantage → 0.9.
+  -- calves_gastrocnemius: crosses the knee and contributes to knee flexion,
+  -- especially in the early ROM. Two-joint shortening reduces its contribution
+  -- as the knee approaches full flexion.
   '[
-    {"muscle_id": "hamstrings", "weight": 1.0}
+    {"muscle_id": "hamstrings_bf_long",         "weight": 1.0},
+    {"muscle_id": "hamstrings_semitendinosus",  "weight": 1.0},
+    {"muscle_id": "hamstrings_semimembranosus", "weight": 1.0},
+    {"muscle_id": "hamstrings_bf_short",        "weight": 0.9},
+    {"muscle_id": "calves_gastrocnemius",       "weight": 0.4}
   ]'::jsonb,
+  '{
+    "hamstrings_bf_long": "Prone position extends the hip, stretching the bi-articular heads (BF long, semis) across the hip. This optimal length-tension position is why lying leg curl is a better hamstring isolator than seated or standing versions for the hip-crossing heads.",
+    "calves_gastrocnemius": "Gastroc crosses the knee and assists knee flexion, especially through the early ROM. As the knee approaches full flexion, gastroc shortens and loses mechanical advantage — its contribution diminishes near the peak contracted position."
+  }'::jsonb,
   'machine', 'leg_curl', 10.00, 5.00,
   ARRAY['hypertrophy'],
   'isolation', 'late',
@@ -440,8 +452,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '11111111-2222-3333-4444-555555555555',
   NULL,
-  -- 'shortened': peak tension at peak knee flexion (curled position).
-  -- Conventions §8 explicitly cites leg curl as a 'shortened' example.
   'shortened',
   'system', FALSE
 );
@@ -451,6 +461,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -464,19 +475,23 @@ INSERT INTO public.exercises (
   ARRAY['leg ext', 'knee extension', 'machine leg extension'],
   'lifting',
   'squat', NULL, 'bilateral',
-  -- TODO(schema): movement_pattern_primary should be 'knee_extension' (or a
-  -- generic 'isolation') once the movement_pattern enum is extended. Using
-  -- 'squat' as the closest-available fit; see TODO.md for the migration
-  -- followup. The squat pattern's core action is knee extension under hip
-  -- flexion — leg extension isolates just the knee piece, so it's the
-  -- closest fit but not a real match.
-  --
-  -- Quads 1.0 — uncontested target. Pure isolation. Rectus femoris crosses
-  -- the hip but the seated position locks hip flexion, so no hip flexor
-  -- contribution worth tracking.
+  -- Machine knee extension isolation. All four quad heads extend the knee.
+  -- quads_rectus_femoris: seated position (hip at ~90°) puts RF in active
+  -- insufficiency — shortened at the hip end while contracting at the knee.
+  -- Vasti are pure knee extensors, so they generate full force without the
+  -- cross-joint penalty → vasti are at 1.0, RF at 0.6.
+  -- This is the opposite of the common "leg extension isolates upper quad"
+  -- framing — at the biomechanical level, vasti are more productive here.
   '[
-    {"muscle_id": "quads", "weight": 1.0}
+    {"muscle_id": "quads_vastus_lateralis",     "weight": 1.0},
+    {"muscle_id": "quads_vastus_medialis",      "weight": 1.0},
+    {"muscle_id": "quads_vastus_intermedius",   "weight": 1.0},
+    {"muscle_id": "quads_rectus_femoris",       "weight": 0.6}
   ]'::jsonb,
+  '{
+    "quads_rectus_femoris": "Seated position (hip ~90° flexed) puts RF in active insufficiency — it is already shortened at the hip while trying to shorten at the knee. Vasti generate more force here because they only cross the knee.",
+    "quads_vastus_medialis": "VMO (lower portion) is especially active in the final 15-30° of knee extension — the lockout phase. Full ROM to lockout recruits VMO specifically."
+  }'::jsonb,
   'machine', 'leg_extension', 10.00, 5.00,
   ARRAY['hypertrophy'],
   'isolation', 'late',
@@ -485,9 +500,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '22222222-3333-4444-5555-666666666666',
   NULL,
-  -- 'shortened': peak tension at full knee extension (legs straight).
-  -- Classic peak-contraction isolation, mirrors leg curl's profile in the
-  -- opposite direction.
   'shortened',
   'system', FALSE
 );
@@ -497,6 +509,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -510,26 +523,20 @@ INSERT INTO public.exercises (
   ARRAY['calf raise', 'standing calf', 'machine calf raise'],
   'lifting',
   'plyometric', NULL, 'bilateral',
-  -- TODO(schema): movement_pattern_primary should be 'ankle_extension' (or
-  -- a generic 'isolation') once the movement_pattern enum is extended. Using
-  -- 'plyometric' as a deliberately bad fit; see TODO.md for migration
-  -- followup. This is the WORST of the five enum compromises — plyometric
-  -- implies ballistic/explosive action, which a slow-tempo calf raise is
-  -- not. Closest available only because it captures ankle plantarflexion
-  -- as primary action; nothing else in the enum does even that.
-  --
-  -- Calves 1.0 — uncontested target. Standing calf specifically loads
-  -- gastrocnemius (knee straight = gastroc engaged); seated calf raise
-  -- (future row in this family) shifts emphasis to soleus. Both are
-  -- 'calves' at our muscle-id resolution.
+  -- Knee straight = gastrocnemius fully engaged (crosses both knee and ankle;
+  -- knee-straight position allows full stretch from ankle to hip attachment).
+  -- Soleus also contributes to plantarflexion but is partly overshadowed by
+  -- gastroc when the knee is extended. For soleus isolation, use seated calf
+  -- raise (knee bent shortens gastroc).
   '[
-    {"muscle_id": "calves", "weight": 1.0}
+    {"muscle_id": "calves_gastrocnemius",       "weight": 1.0},
+    {"muscle_id": "calves_soleus",              "weight": 0.6}
   ]'::jsonb,
+  '{
+    "calves_gastrocnemius": "Knee straight (standing) puts gastroc in a lengthened position, allowing full contribution through the full ankle ROM. This is why standing calf raise loads gastroc significantly more than seated.",
+    "calves_soleus": "Active in all plantarflexion regardless of knee angle, but partially overshadowed by gastroc when the knee is straight. For soleus focus, use seated calf raise."
+  }'::jsonb,
   'machine', 'standing_calf_raise', 10.00, 5.00,
-  -- equipment_primary = 'machine'. Standing calf raise can be done with a
-  -- barbell on the back (calf raise off a plate) but the dedicated machine
-  -- is the canonical execution and the load progression is cleaner. BB
-  -- variant would be a separate row in this family.
   ARRAY['hypertrophy'],
   'isolation', 'late',
   'weight_x_reps', TRUE, FALSE,
@@ -537,9 +544,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '33333333-4444-5555-6666-777777777777',
   NULL,
-  -- 'stretched': bottom of ROM (heel below platform, gastrocnemius
-  -- maximally lengthened) is where peak tension lives. This is the
-  -- canonical stretched-position isolation.
   'stretched',
   'system', FALSE
 );
@@ -549,6 +553,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -562,23 +567,23 @@ INSERT INTO public.exercises (
   ARRAY['BB curl', 'barbell bicep curl', 'standing barbell curl'],
   'lifting',
   'vertical_pull', NULL, 'bilateral',
-  -- TODO(schema): movement_pattern_primary should be 'elbow_flexion' (or a
-  -- generic 'isolation') once the movement_pattern enum is extended. Using
-  -- 'vertical_pull' as the closest-available fit; see TODO.md for migration
-  -- followup. Calling a curl a 'vertical_pull' is the same kind of
-  -- compromise as calling leg extension a 'squat' — captures the directional
-  -- vibe (bar moves vertically toward body) but not the actual mechanic
-  -- (single-joint elbow flexion vs multi-joint pull).
-  --
-  -- Biceps 1.0 — clear target.
-  -- Forearms 0.25 — supinated bar grip mildly works the brachioradialis;
-  -- not as much as hammer curl (which is why hammer is a separate row),
-  -- but enough for a stabilizer entry on heavy curls.
-  -- No abs entry: brief bracing on standing curl, not enough to track.
+  -- Supinated grip (fixed on BB curl) = biceps dominant (Pattern 4:
+  -- supinated = biceps long head in strongest position).
+  -- brachialis 0.5 — still active but biceps are dominant supinated.
+  -- forearms_brachioradialis 0.4, forearms_grip 0.4 — mild contribution.
   '[
-    {"muscle_id": "biceps",   "weight": 1.0},
-    {"muscle_id": "forearms", "weight": 0.25}
+    {"muscle_id": "biceps_long",                "weight": 1.0},
+    {"muscle_id": "biceps_short",               "weight": 0.9},
+    {"muscle_id": "brachialis",                 "weight": 0.5},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.4},
+    {"muscle_id": "forearms_grip",              "weight": 0.4},
+    {"muscle_id": "forearms_wrist_flexors",     "weight": 0.25}
   ]'::jsonb,
+  '{
+    "biceps_long": "Supinated grip is the long head''s strongest position. In the top third of the curl the long head also assists shoulder flexion, adding a small bonus ROM.",
+    "brachialis": "Less dominant than on hammer or pronated curls, but it is a pure elbow flexor so it contributes throughout. Brachialis training adds thickness under the biceps and increases overall arm size.",
+    "forearms_brachioradialis": "Active in elbow flexion regardless of grip. Hammer curl (neutral grip) shifts much more work here for lifters focused on forearm development."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['hypertrophy'],
   'isolation', 'late',
@@ -587,11 +592,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '44444444-5555-6666-7777-888888888888',
   '{"grip": "supinated"}'::jsonb,
-  -- 'mid': peak tension is roughly mid-range (forearm parallel to ground)
-  -- where the moment arm on the bicep is longest. Not stretched (bottom is
-  -- a relatively unloaded hang) and not shortened (top is contracted but
-  -- moment arm shortens). Conventions §8 default for "most rows, leg press"
-  -- = mid; same logic.
   'mid',
   'system', FALSE
 );
@@ -601,6 +601,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -614,24 +615,23 @@ INSERT INTO public.exercises (
   ARRAY['tricep pushdown', 'cable pushdown', 'rope pushdown'],
   'lifting',
   'vertical_push', NULL, 'bilateral',
-  -- TODO(schema): movement_pattern_primary should be 'elbow_extension' (or
-  -- a generic 'isolation') once the movement_pattern enum is extended. Using
-  -- 'vertical_push' as the closest-available fit; see TODO.md for migration
-  -- followup. Same compromise as BB curl in the opposite direction —
-  -- captures the directional vibe (cable moves vertically downward) but
-  -- not the actual mechanic (single-joint elbow extension vs multi-joint
-  -- press).
-  --
-  -- Triceps 1.0 — clear target. Pure isolation; no synergist entries.
+  -- Shoulder neutral (elbows at sides) = triceps_lateral is most active.
+  -- triceps_long is less active because the shoulder is NOT elevated —
+  -- the long head needs overhead position to be fully on stretch.
+  -- This is the key distinction between pushdown and overhead extension.
+  -- triceps_medial 0.9 — highly active throughout, especially at lockout.
   '[
-    {"muscle_id": "triceps", "weight": 1.0}
+    {"muscle_id": "triceps_lateral",            "weight": 1.0},
+    {"muscle_id": "triceps_medial",             "weight": 0.9},
+    {"muscle_id": "triceps_long",               "weight": 0.4},
+    {"muscle_id": "forearms_grip",              "weight": 0.25}
   ]'::jsonb,
+  '{
+    "triceps_lateral": "Primary head for pushdown — elbow extension with the shoulder at neutral is the lateral head''s strongest position. The clean lockout sensation at the bottom of pushdowns is largely lateral head contraction.",
+    "triceps_long": "The shoulder is not elevated, so the long head does not get the stretched-position stimulus it gets on skull crushers or overhead extensions. Pushdown builds the outer heads; add overhead tricep work for full long head development.",
+    "triceps_medial": "The deep medial head is highly active throughout, especially contributing to the final lockout phase."
+  }'::jsonb,
   'cable', 'cable_pushdown', 5.00, 2.50,
-  -- DECISION: load_increment_default = 5.00 not 10.00. Cable pushdown is
-  -- typically done at lighter weights where 10-lb jumps are too aggressive.
-  -- Conventions §5 lists cable as "5.00 or 10.00 (gym-dep.)" — going with
-  -- 5 for this isolation use-case. Override at user level if their gym only
-  -- has 10-lb increments.
   ARRAY['hypertrophy'],
   'isolation', 'late',
   'weight_x_reps', TRUE, FALSE,
@@ -639,10 +639,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '55555555-6666-7777-8888-999999999999',
   '{"grip": "pronated"}'::jsonb,
-  -- Default pronated bar attachment. Rope (neutral) and reverse (supinated)
-  -- pushdowns would be separate rows in this family.
-  -- 'shortened': peak tension at full extension (arms locked out at sides).
-  -- Classic peak-contraction isolation.
   'shortened',
   'system', FALSE
 );
@@ -652,6 +648,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -665,23 +662,24 @@ INSERT INTO public.exercises (
   ARRAY['hammer curl', 'DB hammer curl', 'neutral grip curl'],
   'lifting',
   'vertical_pull', NULL, 'bilateral',
-  -- DECISION (confirmed in chat): separate row from BB curl, not folded
-  -- into aliases. Justification: neutral grip recruits brachialis and
-  -- brachioradialis substantially more than supinated curls. That's a
-  -- meaningful muscle weighting difference, which §1 says triggers a
-  -- separate row.
-  --
-  -- Biceps 1.0 — still target (brachialis is part of the 'biceps' muscle
-  -- group at our resolution; we don't track brachialis separately).
-  -- Forearms 0.5 — bumped from BB curl's 0.25 to 0.5 here. Brachioradialis
-  -- is a forearm muscle and is HEAVILY recruited in neutral grip curls;
-  -- many users feel hammer curls more in their forearms than their biceps.
-  -- Meets §2's "meaningful synergist that fatigues and would be sore"
-  -- criterion solidly.
+  -- Neutral grip (the defining feature) = brachialis dominant (Pattern 4:
+  -- neutral = brachialis 0.8-1.0, biceps 0.6). Brachialis is a pure elbow
+  -- flexor with no supination role, so neutral grip is its best position.
+  -- forearms_brachioradialis 0.7 — heavily recruited in neutral grip curls;
+  -- many lifters feel hammer curls more in their forearms than their biceps.
   '[
-    {"muscle_id": "biceps",   "weight": 1.0},
-    {"muscle_id": "forearms", "weight": 0.5}
+    {"muscle_id": "brachialis",                 "weight": 1.0},
+    {"muscle_id": "biceps_long",                "weight": 0.6},
+    {"muscle_id": "biceps_short",               "weight": 0.6},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.7},
+    {"muscle_id": "forearms_grip",              "weight": 0.4},
+    {"muscle_id": "forearms_wrist_flexors",     "weight": 0.25}
   ]'::jsonb,
+  '{
+    "brachialis": "Neutral grip shifts elbow flexion to brachialis — it is a pure elbow flexor with no supination role, so this is its optimal position. Training brachialis adds thickness under the biceps and increases total arm girth.",
+    "biceps_long": "Less active than on supinated barbell curl because the neutral grip does not put biceps in its strongest position.",
+    "forearms_brachioradialis": "Heavily recruited in neutral grip curls — often the muscle lifters feel most on this exercise. Hammer curl is one of the few exercises that trains brachioradialis directly through ROM."
+  }'::jsonb,
   'dumbbell', NULL, 5.00, 2.50,
   ARRAY['hypertrophy'],
   'isolation', 'late',
@@ -708,13 +706,9 @@ INSERT INTO public.exercises (
 --   bb_ohp            = aaaaaaaa-0016-0000-0000-000000000001  (batch 2)
 --   db_ohp            = aaaaaaaa-0017-0000-0000-000000000001  (batch 2)
 --   lateral_raise     = aaaaaaaa-0003-0000-0000-000000000001  (batch 1)
---
--- NOTE on within-family bench edges (incline BB ↔ incline DB ↔ flat BB
--- ↔ flat DB): same enum issue flagged in batch 2's substitute header —
--- same equipment within a variation family doesn't fit any reason tag
--- cleanly. Using `same_pattern_different_equipment` for cross-equipment
--- (BB↔DB) and `same_muscles_different_pattern` for cross-incline
--- (flat↔incline same equipment), accepting the same enum-stretch.
+--   rdl               = aaaaaaaa-0010-0000-0000-000000000001  (batch 2)
+--   leg_press         = aaaaaaaa-0005-0000-0000-000000000001  (batch 1)
+--   back_squat        = aaaaaaaa-0001-0000-0000-000000000001  (batch 1)
 
 INSERT INTO public.exercise_substitutes (exercise_id, substitute_id, similarity_score, reason) VALUES
   -- ── 18. Incline BB bench ─────────────────────────────────────────────────
@@ -727,43 +721,26 @@ INSERT INTO public.exercise_substitutes (exercise_id, substitute_id, similarity_
   ('aaaaaaaa-0019-0000-0000-000000000001', 'aaaaaaaa-0013-0000-0000-000000000001', 0.75, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0019-0000-0000-000000000001', 'aaaaaaaa-0017-0000-0000-000000000001', 0.50, 'same_muscles_different_pattern'),
 
-  -- Reciprocal: flat BB bench (batch 2) → incline BB (and DB) as new
-  -- variations in same family. Adding to batch 2's outgoing edges.
+  -- Reciprocal: flat BB bench (batch 2) → incline BB (and DB).
   ('aaaaaaaa-0012-0000-0000-000000000001', 'aaaaaaaa-0018-0000-0000-000000000001', 0.75, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0013-0000-0000-000000000001', 'aaaaaaaa-0019-0000-0000-000000000001', 0.75, 'same_muscles_different_pattern'),
 
   -- ── 20. Dip ──────────────────────────────────────────────────────────────
-  -- Triceps-bias dip (revised default per review). Closest substitutes are
-  -- triceps-pattern lifts: pushdown (isolation, same target) and OHP
-  -- (compound with triceps as 0.5 synergist). Bench remains a substitute
-  -- because chest is still 0.5 here and dip can fill a horizontal-press
-  -- slot at lower priority.
   ('aaaaaaaa-0020-0000-0000-000000000001', 'aaaaaaaa-0028-0000-0000-000000000001', 0.65, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0020-0000-0000-000000000001', 'aaaaaaaa-0016-0000-0000-000000000001', 0.55, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0020-0000-0000-000000000001', 'aaaaaaaa-0012-0000-0000-000000000001', 0.45, 'same_muscles_different_pattern'),
 
   -- ── 21. Chin-up ──────────────────────────────────────────────────────────
-  -- Within pullup_family: pull-up. Across families: lat pulldown (vertical
-  -- pull alternative).
   ('aaaaaaaa-0021-0000-0000-000000000001', 'aaaaaaaa-0002-0000-0000-000000000001', 0.85, 'same_muscles_different_pattern'),
-  -- Reason: same family, different grip = different muscle weighting; same
-  -- enum-stretch as the squat within-family edges in batch 2.
   ('aaaaaaaa-0021-0000-0000-000000000001', 'aaaaaaaa-0022-0000-0000-000000000001', 0.65, 'same_pattern_different_equipment'),
-  -- chin-up regression: lat pulldown (cable, supinated grip variant).
-  -- Note: lat_pulldown is authored pronated by default; in practice users
-  -- swap grips. Substitute edge captures the "I can't do chins" use case.
 
   -- Reciprocal: pull-up (batch 1) → chin-up
   ('aaaaaaaa-0002-0000-0000-000000000001', 'aaaaaaaa-0021-0000-0000-000000000001', 0.85, 'same_muscles_different_pattern'),
 
-  -- Reciprocal: BB OHP (batch 2) → dip (revised dip is triceps-bias, so
-  -- OHP and dip now share triceps + front_delts as the synergist pair;
-  -- meaningful substitute for users without an OHP setup).
+  -- Reciprocal: BB OHP (batch 2) → dip
   ('aaaaaaaa-0016-0000-0000-000000000001', 'aaaaaaaa-0020-0000-0000-000000000001', 0.55, 'same_muscles_different_pattern'),
 
   -- ── 22. Lat pulldown ─────────────────────────────────────────────────────
-  -- Confirmed in chat: pulldown ↔ pull-up is same_pattern_different_equipment,
-  -- not regression/progression (different lifts, not graded versions).
   ('aaaaaaaa-0022-0000-0000-000000000001', 'aaaaaaaa-0002-0000-0000-000000000001', 0.75, 'same_pattern_different_equipment'),
   ('aaaaaaaa-0022-0000-0000-000000000001', 'aaaaaaaa-0021-0000-0000-000000000001', 0.65, 'same_pattern_different_equipment'),
   ('aaaaaaaa-0022-0000-0000-000000000001', 'aaaaaaaa-0023-0000-0000-000000000001', 0.50, 'same_muscles_different_pattern'),
@@ -774,57 +751,28 @@ INSERT INTO public.exercise_substitutes (exercise_id, substitute_id, similarity_
   -- ── 23. Seated cable row ─────────────────────────────────────────────────
   ('aaaaaaaa-0023-0000-0000-000000000001', 'aaaaaaaa-0015-0000-0000-000000000001', 0.85, 'same_pattern_different_equipment'),
   ('aaaaaaaa-0023-0000-0000-000000000001', 'aaaaaaaa-0014-0000-0000-000000000001', 0.65, 'progression'),
-  -- Reason: BB row is a progression for cable row users — adds lumbar
-  -- loading and grip demand. Per conventions §10 progression definition.
   ('aaaaaaaa-0023-0000-0000-000000000001', 'aaaaaaaa-0022-0000-0000-000000000001', 0.50, 'same_muscles_different_pattern'),
 
-  -- Reciprocal: BB row (batch 2) → cable row (regression edge)
+  -- Reciprocal: BB row (batch 2) → cable row
   ('aaaaaaaa-0014-0000-0000-000000000001', 'aaaaaaaa-0023-0000-0000-000000000001', 0.65, 'regression'),
-  -- Reciprocal: chest-supported row (batch 2) → cable row (cross-equipment)
+  -- Reciprocal: chest-supported row (batch 2) → cable row
   ('aaaaaaaa-0015-0000-0000-000000000001', 'aaaaaaaa-0023-0000-0000-000000000001', 0.85, 'same_pattern_different_equipment'),
 
   -- ── 24. Lying leg curl ───────────────────────────────────────────────────
-  -- Hamstring isolation has limited substitutes; closest are RDL (compound
-  -- with hamstring focus) and the related stretched-vs-shortened pairing.
-  -- Only one substitute here is honest — could pad with seated leg curl but
-  -- that's a future row. §10 says "at least one"; we're at one.
   ('aaaaaaaa-0024-0000-0000-000000000001', 'aaaaaaaa-0010-0000-0000-000000000001', 0.55, 'same_muscles_different_pattern'),
 
   -- ── 25. Leg extension ────────────────────────────────────────────────────
-  -- Quad isolation; closest substitutes are quad-dominant compounds.
   ('aaaaaaaa-0025-0000-0000-000000000001', 'aaaaaaaa-0005-0000-0000-000000000001', 0.45, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0025-0000-0000-000000000001', 'aaaaaaaa-0001-0000-0000-000000000001', 0.40, 'same_muscles_different_pattern'),
-  -- Note: lower scores than e.g. row substitutes because leg extension is
-  -- truly isolated quads-only; the compound substitutes hit quads with very
-  -- different stimulus/skill profiles.
 
   -- ── 26. Standing calf raise ──────────────────────────────────────────────
-  -- Calves coverage is sparse in the DB right now. No good in-DB substitute
-  -- until a seated calf raise / leg-press calf raise lands. Including the
-  -- minimum one substitute (leg press, which incidentally hits calves at
-  -- end-range). Honestly sub-0.25 — this is the "at least one" floor.
   ('aaaaaaaa-0026-0000-0000-000000000001', 'aaaaaaaa-0005-0000-0000-000000000001', 0.30, 'same_muscles_different_pattern'),
-  -- DECISION (surfaced for review): including a 0.30 substitute violates
-  -- conventions §10 "<0.25 don't bother" only narrowly. The floor on the
-  -- coverage rule is "at least one substitute"; this is the least-bad
-  -- option until calf raise variants are added in batch 4. If review
-  -- prefers, drop this row and accept that calf raise has zero substitutes
-  -- in v1.
 
   -- ── 27. Barbell curl ─────────────────────────────────────────────────────
   ('aaaaaaaa-0027-0000-0000-000000000001', 'aaaaaaaa-0029-0000-0000-000000000001', 0.65, 'same_muscles_different_pattern'),
-  -- BB curl ↔ hammer: same primary muscle, different forearm bias. Within-
-  -- arm-day swap, not within a single family (different family per §1).
   ('aaaaaaaa-0027-0000-0000-000000000001', 'aaaaaaaa-0021-0000-0000-000000000001', 0.45, 'same_muscles_different_pattern'),
-  -- BB curl → chin-up: chin-up hits biceps as a 1.0 target. For a user with
-  -- no curl access, chin-up is a real biceps stimulus.
 
   -- ── 28. Triceps pushdown ─────────────────────────────────────────────────
-  -- Pushdown is shortened-position triceps isolation; closest substitutes
-  -- now include dip (revised to triceps-bias default — strong relationship,
-  -- both target triceps with overlapping stimulus). OHP is the cross-pattern
-  -- compound that hits triceps as 0.5 synergist. Without overhead extension
-  -- or skull crusher in the DB, that's the honest substitute set.
   ('aaaaaaaa-0028-0000-0000-000000000001', 'aaaaaaaa-0020-0000-0000-000000000001', 0.65, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0028-0000-0000-000000000001', 'aaaaaaaa-0016-0000-0000-000000000001', 0.40, 'same_muscles_different_pattern'),
 
