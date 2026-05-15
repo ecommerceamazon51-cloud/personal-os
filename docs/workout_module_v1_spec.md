@@ -224,14 +224,92 @@ App educates users that deload = productive, encourages sleep/mobility/walking. 
 - `exercise_id`, `name`, `aliases`, `domain` (lifting | martial_arts | conditioning | mobility)
 
 ### Movement classification
-- `movement_pattern_primary` (squat | hinge | horizontal_push | vertical_push | horizontal_pull | vertical_pull | lunge_split | carry | rotation | anti_rotation | plyometric | locomotion | skill | mobility)
+- `movement_pattern_primary` — full canonical list (22 values, post PR #4):
+  - **Multi-joint compounds**: squat | hinge | horizontal_push | vertical_push | horizontal_pull | vertical_pull | lunge_split | carry
+  - **Isolation (single-joint)**: knee_flexion | knee_extension | elbow_flexion | elbow_extension | ankle_plantarflexion | shoulder_abduction
+  - **Anti-pattern / core stabilization**: rotation | anti_rotation | anti_extension | anti_lateral_flexion
+  - **Other**: plyometric | locomotion | skill | mobility
 - `movement_pattern_secondary` (nullable)
 - `loading_type` (bilateral | unilateral | alternating)
 
-### Muscle targeting
-- `muscles`: array of `{muscle_id, weight}` where weight is 1.0 (primary), 0.5 (synergist), 0.25 (stabilizer)
-- Only muscles weighted ≥ 0.5 count toward weekly volume
-- Muscle list (~22): quads, hamstrings, glutes, calves, chest, lats, traps_upper, traps_mid_lower, rhomboids, rear_delts, side_delts, front_delts, biceps, triceps, forearms, abs, obliques, lower_back, neck, hip_flexors, adductors, abductors
+### Muscle targeting (v2: per-head parent/child taxonomy)
+
+**Structure.** The `muscles` lookup table uses a parent/child hierarchy via the `parent_muscle_id` column:
+
+- **Group** (e.g. `triceps`): parent row with children. No exercise references a group directly.
+- **Head** (e.g. `triceps_lateral`): child row with `parent_muscle_id` set. This is what exercises reference.
+- **Singleton** (e.g. `brachialis`, `rhomboids`): no parent, no children. Referenced directly by exercises.
+
+Use the `muscles_with_kind` view to derive the classification:
+
+```sql
+SELECT muscle_id, display_name, parent_muscle_id, muscle_kind
+FROM public.muscles_with_kind;
+-- muscle_kind ∈ { 'group', 'head', 'singleton' }
+```
+
+The `muscle_kind` column is **derived, not stored**, to avoid two sources of truth (a row's parent + a stored kind that could disagree).
+
+**Display names are user-friendly.** `muscle_id` is for the schema and code; `display_name` is what users see in the app. Example: `muscle_id = 'pectorals'`, `display_name = 'Chest'`. Authoring references muscle_id, not display_name.
+
+**Exercise muscle entries.** The `exercises.muscles` JSONB column is an array of `{muscle_id, weight}` objects:
+
+```json
+[
+  {"muscle_id": "triceps_long",    "weight": 0.7},
+  {"muscle_id": "triceps_lateral", "weight": 1.0},
+  {"muscle_id": "triceps_medial",  "weight": 0.5}
+]
+```
+
+Weights are decimal 0.0–1.0. Tier guidance (1.0 = target, 0.5 = synergist, 0.25 = minor contributor through ROM under load) is in `docs/exercise_authoring_conventions.md` §2. Intermediate values (0.3, 0.4, 0.6, 0.7, 0.85) are encouraged when contribution falls between tiers.
+
+**Comprehensive 0.25 authoring (changed from v1).** Any muscle head that goes through ROM under load is listed, even if it doesn't count toward the current volume rule. Stored for advanced user profiles and future configurable volume math. See conventions §2.
+
+**Head emphasis cues.** `exercises.head_emphasis_notes` is a nullable JSONB object mapping muscle_id → form cue text:
+
+```json
+{
+  "triceps_lateral": "Keep elbows tucked to maximize lateral head; flaring shifts work toward long head.",
+  "triceps_long":    "Overhead variants emphasize long head via shoulder flexion."
+}
+```
+
+Populated only for heads where form distinguishes head emphasis. NULL when no per-head cues apply.
+
+**Cross-listed muscles.** Rectus femoris is anatomically a quad (knee extensor) AND a hip flexor. In the taxonomy it lives under `quads` only; exercises that train it via hip flexion (hanging leg raise, etc.) list it under quads with a `head_emphasis_notes` entry explaining the function. This avoids duplicate rows. See conventions §13.
+
+**Volume aggregation rules:**
+
+1. **Per-head volume** is the source of truth. `weight × sets` per head, summed across the week.
+
+2. **Volume eligibility threshold:** only entries weighted ≥ 0.5 count toward current weekly volume targets. (0.25 entries stored but ignored by current volume math; reserved for future user profile rules.)
+
+3. **Group-level volume** = arithmetic mean of all head weights in the group, with untrained heads counted as zero. Example: a leg curl weighting 3 of 4 hamstring heads at 1.0 / 0 / 1.0 / 0.8 has a group score of (1.0 + 0 + 1.0 + 0.8) / 4 = 0.7. The untrained head pulls the group average down — this is correct, because the exercise genuinely doesn't train that head and the group score should reflect reality.
+
+4. **Singletons** contribute directly (no aggregation needed).
+
+**Muscle taxonomy (67 rows total, post-PR A):**
+- 15 groups: quads, hamstrings, glutes, calves, adductors, hip_flexors, pectorals, lats, biceps, triceps, forearms, neck, deltoids, traps, rotator_cuff
+- 44 heads (parent → child examples):
+  - quads → rectus_femoris, vastus_lateralis, vastus_medialis, vastus_intermedius
+  - hamstrings → bf_long, bf_short, semitendinosus, semimembranosus
+  - glutes → max, medius, minimus
+  - calves → gastrocnemius, soleus
+  - adductors → magnus, short
+  - hip_flexors → iliopsoas, tfl, sartorius
+  - pectorals → clavicular, sternal, abdominal
+  - lats → upper, lower *(functional regions, not anatomical heads; see conventions §13)*
+  - biceps → long, short
+  - triceps → long, lateral, medial
+  - forearms → wrist_flexors, wrist_extensors, brachioradialis, grip *(grouped functional categories of ~20 forearm muscles; see conventions §13)*
+  - neck → flexors, extensors
+  - deltoids → anterior, lateral, posterior
+  - traps → upper, middle, lower
+  - rotator_cuff → supraspinatus, infraspinatus, teres_minor, subscapularis
+- 8 singletons: rhomboids, spinal_erectors, rectus_abdominis, obliques, teres_major, serratus_anterior, brachialis, transverse_abdominis
+
+Full authoring rules and per-head weighting patterns: see `docs/exercise_authoring_conventions.md` §13 + §14.
 
 ### Equipment
 - `equipment_primary` (barbell | dumbbell | machine | cable | bodyweight | kettlebell | band | specialty_bar | plyo_box | sled | med_ball | bag | pads | none)
@@ -267,10 +345,12 @@ App educates users that deload = productive, encourages sleep/mobility/walking. 
 - `created_at`, `updated_at`, `authored_by` (system | curator | user), `verified` (boolean)
 
 ### Schema decisions worth noting
-- Three-tier muscle weighting (1.0 / 0.5 / 0.25) — easier to author than continuous weighting
+- Muscle weighting tiers (1.0 / 0.5 / 0.25) with intermediate values encouraged — easier to author than continuous weighting, but more honest than strict tiering when contribution falls between tiers.
+- Per-head muscle taxonomy with parent/child structure (v2; previously flat 22-row taxonomy in v1). Group/head/singleton classification derived via `muscles_with_kind` view, not stored. Volume aggregation: per-head is source of truth; group-level is mean across all heads with untrained heads as zero.
 - No static "skill" or "fatigue cost" tags — handled by prerequisites and runtime derivation
 - Default role on exercise; program can override at usage time
 - Substitutes computed initially, cached if performance demands
+- `head_emphasis_notes` JSONB column carries form cues per head; populated only where form distinguishes head emphasis (grip width, foot position, elbow path, etc.).
 
 ---
 

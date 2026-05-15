@@ -1,5 +1,6 @@
 -- =============================================================================
 -- Seed Exercises — Batch 2 (12 exercises: squat completion, hinge, push, pull)
+-- Updated for muscle taxonomy v2 — per-head distributions and head_emphasis_notes added.
 -- =============================================================================
 -- Purpose: fill out the most important gaps after batch 1's 5 representative
 -- exercises. NOT for live insertion until reviewed; format matches batch 1
@@ -24,51 +25,32 @@
 --    16.  Standing Barbell Overhead Press
 --    17.  Seated Dumbbell Overhead Press
 --
--- Conventions adhered to (see docs/exercise_authoring_conventions.md):
---   - §1: variations are separate rows; low-bar / front / goblet share squat
---     family with batch-1 high-bar back squat. Conv DL, RDL, hip thrust each
---     get their own family (different lifts, different muscle weightings,
---     different patterns within hinge umbrella).
---   - §2: muscle-weighting discipline. 1.0 only for clear targets; default to
---     fewer 1.0s when borderline. 0.25 only when meaningfully challenged
---     (forearms on heavy DL, abs on standing OHP — both cited as correct
---     examples in §2). Decisions surfaced inline below where judgment was
---     required.
---   - §3: demands drawn from the closed vocabulary. No new tags introduced.
---     One candidate ("front_rack_position") considered and rejected — see
---     Front Squat note below.
---   - §4: variation_attributes uses established keys only (bar_position,
---     stance, incline). All snake_case.
---   - §5: all load_increment values in lbs.
---   - §6: 2-4 aliases per exercise.
---   - §10: directed substitutes; cross-batch refs use batch-1 UUIDs.
+-- Conventions adhered to (see docs/exercise_authoring_conventions.md v2):
+--   - §1: variations are separate rows.
+--   - §2: muscle-weighting discipline. Per-head v2 with intermediate weights.
+--   - §13: all muscle_ids are per-head or singletons; no group references.
+--   - §14: seven biomechanical patterns applied throughout.
 --
--- All `relative_to_bodyweight` = FALSE for this batch (no bodyweight-loaded
--- movements; everything is externally loaded barbell/dumbbell/cable).
--- All `progression_eligible` = TRUE (all standard loaded lifts).
--- All `authored_by` = 'system', `verified` = FALSE — pending review.
+-- All `relative_to_bodyweight` = FALSE for this batch.
+-- All `progression_eligible` = TRUE.
+-- All `authored_by` = 'system', `verified` = FALSE.
 -- =============================================================================
 
 -- Pre-generated UUIDs so substitutes wire up in one script.
 -- Family IDs (§1: variations of same lift share a family_id)
---   squat_family       = 11111111-1111-1111-1111-111111111111   (batch 1; reused for low-bar/front/goblet)
+--   squat_family       = 11111111-1111-1111-1111-111111111111   (batch 1; reused)
 --   pullup_family      = 22222222-2222-2222-2222-222222222222   (batch 1)
 --   lateral_family     = 33333333-3333-3333-3333-333333333333   (batch 1)
 --   splitsquat_family  = 44444444-4444-4444-4444-444444444444   (batch 1)
 --   legpress_family    = 55555555-5555-5555-5555-555555555555   (batch 1)
---   deadlift_family    = 66666666-6666-6666-6666-666666666666   (NEW; conv DL + future variants like sumo, deficit)
---   rdl_family         = 77777777-7777-7777-7777-777777777777   (NEW; RDL + future variants like DB RDL, single-leg RDL)
---   hip_thrust_family  = 88888888-8888-8888-8888-888888888888   (NEW; barbell HT + future variants like single-leg, B-stance)
---   bench_family       = 99999999-9999-9999-9999-999999999999   (NEW; flat BB + flat DB + future incline/decline variants)
---   row_family         = bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb   (NEW; BB row + chest-supported DB row + future variants)
---   ohp_family         = cccccccc-cccc-cccc-cccc-cccccccccccc   (NEW; standing BB OHP + seated DB OHP + future variants)
+--   deadlift_family    = 66666666-6666-6666-6666-666666666666
+--   rdl_family         = 77777777-7777-7777-7777-777777777777
+--   hip_thrust_family  = 88888888-8888-8888-8888-888888888888
+--   bench_family       = 99999999-9999-9999-9999-999999999999
+--   row_family         = bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb
+--   ohp_family         = cccccccc-cccc-cccc-cccc-cccccccccccc
 --
--- Note: each hinge lift gets its own family (deadlift / rdl / hip_thrust)
--- because conventions §1 treats different muscle weightings + different
--- patterns as separate lifts, not variations of one. The "hinge" pattern is
--- the umbrella, not the family.
---
--- Exercise IDs (continuing batch-1 scheme aaaaaaaa-XXXX-...)
+-- Exercise IDs:
 --   back_squat_low_bar   = aaaaaaaa-0006-0000-0000-000000000001
 --   front_squat          = aaaaaaaa-0007-0000-0000-000000000001
 --   goblet_squat         = aaaaaaaa-0008-0000-0000-000000000001
@@ -88,6 +70,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -101,24 +84,35 @@ INSERT INTO public.exercises (
   ARRAY['low-bar squat', 'low bar back squat', 'powerlifting squat', 'low-bar back squat'],
   'lifting',
   'squat', 'hinge', 'bilateral',
-  -- Low-bar shifts the bar onto the rear delts and produces a more horizontal
-  -- torso → longer hip moment arm, shorter knee moment arm. Per conventions §2:
-  -- "glutes at 1.0 only on hip-dominant variants (low-bar wide-stance, sumo)."
-  -- Quads stay 1.0 — they are still a target on any squat. Hamstrings pick up
-  -- 0.5 (meaningful synergist on the hip-dominant pattern; not a primary).
-  -- Wider stance (typical for low-bar) → adductors 0.5 retained. Lower-back 0.25
-  -- and abs 0.25 carry over from high-bar; the more horizontal torso slightly
-  -- increases lumbar demand but not enough to bump to 0.5.
-  -- Movement_pattern_secondary = 'hinge' to flag the increased posterior-chain
-  -- contribution; differentiates from high-bar (which has secondary = NULL).
+  -- Low-bar shifts the bar onto the rear delts → more horizontal torso → longer
+  -- hip moment arm, shorter knee moment arm. glutes_max rises to 1.0 (this is
+  -- a hip-dominant squat variant per conventions §14). RF gets a larger two-joint
+  -- discount than high-bar because the forward lean increases hip flexion at the
+  -- bottom. Hamstrings become real synergists (0.5) instead of stabilizers (0.25).
+  -- Spinal erectors bump to 0.5 from 0.4 (more horizontal torso = more lumbar demand).
   '[
-    {"muscle_id": "quads",      "weight": 1.0},
-    {"muscle_id": "glutes",     "weight": 1.0},
-    {"muscle_id": "hamstrings", "weight": 0.5},
-    {"muscle_id": "adductors",  "weight": 0.5},
-    {"muscle_id": "lower_back", "weight": 0.25},
-    {"muscle_id": "abs",        "weight": 0.25}
+    {"muscle_id": "quads_rectus_femoris",       "weight": 0.7},
+    {"muscle_id": "quads_vastus_lateralis",     "weight": 1.0},
+    {"muscle_id": "quads_vastus_medialis",      "weight": 1.0},
+    {"muscle_id": "quads_vastus_intermedius",   "weight": 1.0},
+    {"muscle_id": "glutes_max",                 "weight": 1.0},
+    {"muscle_id": "glutes_medius",              "weight": 0.3},
+    {"muscle_id": "adductors_magnus",           "weight": 0.7},
+    {"muscle_id": "adductors_short",            "weight": 0.4},
+    {"muscle_id": "hamstrings_bf_long",         "weight": 0.5},
+    {"muscle_id": "hamstrings_semitendinosus",  "weight": 0.5},
+    {"muscle_id": "hamstrings_semimembranosus", "weight": 0.5},
+    {"muscle_id": "spinal_erectors",            "weight": 0.5},
+    {"muscle_id": "rectus_abdominis",           "weight": 0.25},
+    {"muscle_id": "obliques",                   "weight": 0.25},
+    {"muscle_id": "calves_gastrocnemius",       "weight": 0.25}
   ]'::jsonb,
+  '{
+    "quads_rectus_femoris": "Lower bar position means a more horizontal torso, which increases hip flexion at the bottom and shortens rectus femoris more than on high-bar. Vasti get the full ROM benefit; RF does not.",
+    "glutes_max": "Low-bar''s defining characteristic — the long hip moment arm loads glute max through full stretch at the bottom. This is why low-bar moves more weight than high-bar despite identical muscles.",
+    "hamstrings_bf_long": "Posterior-chain dominant by design. The hamstrings assist hip extension through most of the lift — a step up from stabilizer (high-bar) to real synergist.",
+    "spinal_erectors": "More work than on high-bar because the torso leans further forward. The erectors must resist a larger lumbar flexion moment throughout the rep."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
@@ -136,6 +130,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -149,25 +144,31 @@ INSERT INTO public.exercises (
   ARRAY['front squat', 'BB front squat', 'clean-grip front squat'],
   'lifting',
   'squat', NULL, 'bilateral',
-  -- Bar in front rack → upright torso → quad-dominant, less glute, less posterior
-  -- chain. Abs work hard to resist the bar pulling the torso into flexion;
-  -- per conventions §2 this is a meaningful synergist (would be sore if
-  -- isolated, fatigues during the set), so 0.5 not 0.25. Glutes drop from
-  -- the 1.0 of low-bar back to 0.5 (clearly not the target on front squat).
-  -- Lower_back 0.25 carries over (axially loaded). Adductors 0.5 retained
-  -- (still a squat).
-  -- PROPOSED NEW DEMAND CANDIDATE: front_rack_position — REJECTED. The wrist
-  -- mobility / shoulder external rotation requirement is meaningful but is
-  -- already covered by `shoulder_external_rotation` and (debatably)
-  -- `thoracic_extension`. Adding a more specific tag would be silent vocab
-  -- creep. Tagging shoulder_external_rotation here.
+  -- Bar in front rack → upright torso → most quad-dominant barbell squat.
+  -- RF discount is smallest here (0.85) because hip flexion at bottom is minimized.
+  -- glutes_max drops to 0.4 (short hip moment arm, not the primary mover).
+  -- rectus_abdominis rises to 0.5 — the front-loaded bar creates real anti-extension
+  -- demand; the core is a genuine synergist here, not just a brace.
   '[
-    {"muscle_id": "quads",      "weight": 1.0},
-    {"muscle_id": "glutes",     "weight": 0.5},
-    {"muscle_id": "adductors",  "weight": 0.5},
-    {"muscle_id": "abs",        "weight": 0.5},
-    {"muscle_id": "lower_back", "weight": 0.25}
+    {"muscle_id": "quads_rectus_femoris",       "weight": 0.85},
+    {"muscle_id": "quads_vastus_lateralis",     "weight": 1.0},
+    {"muscle_id": "quads_vastus_medialis",      "weight": 1.0},
+    {"muscle_id": "quads_vastus_intermedius",   "weight": 1.0},
+    {"muscle_id": "glutes_max",                 "weight": 0.4},
+    {"muscle_id": "glutes_medius",              "weight": 0.25},
+    {"muscle_id": "adductors_magnus",           "weight": 0.5},
+    {"muscle_id": "adductors_short",            "weight": 0.3},
+    {"muscle_id": "rectus_abdominis",           "weight": 0.5},
+    {"muscle_id": "obliques",                   "weight": 0.4},
+    {"muscle_id": "spinal_erectors",            "weight": 0.3},
+    {"muscle_id": "hamstrings_bf_long",         "weight": 0.25},
+    {"muscle_id": "calves_gastrocnemius",       "weight": 0.25}
   ]'::jsonb,
+  '{
+    "quads_rectus_femoris": "Upright torso keeps the hip angle more open throughout the lift, reducing the two-joint canceling effect. More RF contribution here than on low-bar or even high-bar back squat.",
+    "glutes_max": "Significantly lower than back squat variants — the upright torso shortens the hip moment arm and glutes contribute much less. Use back squat or hip thrust for glute emphasis.",
+    "rectus_abdominis": "The bar in front creates a genuine anti-extension demand. Without core bracing the torso will fold forward. One of the few squat variations where abs are a true synergist."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
@@ -185,6 +186,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -198,27 +200,29 @@ INSERT INTO public.exercises (
   ARRAY['DB goblet squat', 'KB goblet squat', 'dumbbell goblet squat'],
   'lifting',
   'squat', NULL, 'bilateral',
-  -- Goblet squat is a regression / warm-up for the squat pattern.
-  -- DECISION: Quads remain 1.0. The target muscle on a quad-dominant squat
-  -- doesn't change because of load ceiling — quads are still the muscle that
-  -- limits the lift and the muscle the user is "training." That the user
-  -- can't load it heavily enough to drive serious hypertrophy is captured by
-  -- default_role = 'accessory' and the lack of 'strength' modality, not by
-  -- demoting quads. (Surfacing this for confirmation — see reply.)
-  -- Glutes 0.5, adductors 0.5 — same as front squat. Abs 0.25: front-loaded
-  -- (one DB at chest) creates real anti-extension demand even at light load,
-  -- though not enough to bump to 0.5 the way front squat does.
-  -- equipment_primary: 'dumbbell' since DB is the more common default;
-  -- KB goblet would technically warrant a separate row per §1 (different
-  -- equipment) but is so close to identical in execution that it's covered
-  -- by aliases for v1. If the model later distinguishes them by load-range
-  -- semantics, split it into a separate row.
+  -- Upright torso similar to front squat → quad-dominant. RF at 0.85 (same logic).
+  -- glutes_max at 0.4 (less than back squat). rectus_abdominis at 0.4 (single
+  -- counterbalance load at chest; less anti-extension demand than front rack).
+  -- Bilateral rule → glutes_medius at 0.25, glutes_minimus omitted.
   '[
-    {"muscle_id": "quads",      "weight": 1.0},
-    {"muscle_id": "glutes",     "weight": 0.5},
-    {"muscle_id": "adductors",  "weight": 0.5},
-    {"muscle_id": "abs",        "weight": 0.25}
+    {"muscle_id": "quads_rectus_femoris",       "weight": 0.85},
+    {"muscle_id": "quads_vastus_lateralis",     "weight": 1.0},
+    {"muscle_id": "quads_vastus_medialis",      "weight": 1.0},
+    {"muscle_id": "quads_vastus_intermedius",   "weight": 1.0},
+    {"muscle_id": "glutes_max",                 "weight": 0.4},
+    {"muscle_id": "glutes_medius",              "weight": 0.25},
+    {"muscle_id": "adductors_magnus",           "weight": 0.5},
+    {"muscle_id": "adductors_short",            "weight": 0.3},
+    {"muscle_id": "rectus_abdominis",           "weight": 0.4},
+    {"muscle_id": "obliques",                   "weight": 0.3},
+    {"muscle_id": "spinal_erectors",            "weight": 0.25},
+    {"muscle_id": "hamstrings_bf_long",         "weight": 0.25},
+    {"muscle_id": "calves_gastrocnemius",       "weight": 0.25}
   ]'::jsonb,
+  '{
+    "quads_rectus_femoris": "Upright goblet position (like front squat) keeps hip angle open at the bottom, so RF cancels less versus the vasti. Good for training all four quad heads in proportion.",
+    "rectus_abdominis": "Single load held at the chest creates a mild anti-extension demand — present throughout but lighter than front squat because the load is lower."
+  }'::jsonb,
   'dumbbell', NULL, 5.00, 2.50,
   ARRAY['hypertrophy', 'mobility', 'stability'],
   'accessory', 'anywhere',
@@ -236,6 +240,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -249,35 +254,41 @@ INSERT INTO public.exercises (
   ARRAY['deadlift', 'conv DL', 'BB deadlift', 'conventional DL'],
   'lifting',
   'hinge', NULL, 'bilateral',
-  -- DECISION (revised after review): two muscles at 1.0, not three.
-  -- - Hamstrings 1.0 — primary hip extensor off the floor; fatigue-limiting
-  --   on heavy sets.
-  -- - Lower_back 1.0 — UNIQUE TO DEADLIFT vs other lifts. On squats, the
-  --   lower back is a 0.25 stabilizer (supports the bar). On deadlift, the
-  --   spinal erectors are loaded under significant moment arm and are often
-  --   what fails first on a heavy attempt. Meets §2's "muscle that limits
-  --   the lift" criterion.
-  -- - Glutes 0.5 (DEMOTED from 1.0): glutes are primary at lockout, but for
-  --   most of the ROM hamstrings + erectors do the work, and on heavy sets
-  --   lockout is rarely the failure point. Same reasoning applied to RDL
-  --   below ("if glutes were the target you'd programme a hip thrust")
-  --   applies here — keeping the two lifts internally consistent.
-  -- Quads 0.5 — meaningful off the floor, not primary.
-  -- Traps_upper 0.5 — heavy isometric to support the bar through the lift;
-  --   meaningful synergist that would fatigue and be sore.
-  -- Forearms 0.25 — grip-intensive heavy DL, cited explicitly in conventions
-  --   §2 as a correct 0.25 entry.
-  -- Adductors omitted — not meaningful at conventional stance.
-  -- Abs omitted — bracing happens but the spinal erectors do the work; abs
-  --   at 0.25 here would just be noise.
+  -- Two muscles at 1.0: hamstrings_bf_long (primary hip extensor off the floor)
+  -- and spinal_erectors (large flexion moment arm; often what fails on heavy attempts).
+  -- glutes_max at 0.7 — dominant at lockout but hamstrings drive most of the pull.
+  -- Quads at 0.4-0.5 — leg drive off the floor.
+  -- traps_upper/middle at 0.6/0.4 — heavy isometric scapular support throughout.
+  -- forearms_grip at 0.8 — often the limiting factor before primary muscles fail.
+  -- Bilateral → glutes_medius at 0.25. adductors_magnus as hip extensor at 0.6.
   '[
-    {"muscle_id": "hamstrings",   "weight": 1.0},
-    {"muscle_id": "lower_back",   "weight": 1.0},
-    {"muscle_id": "glutes",       "weight": 0.5},
-    {"muscle_id": "quads",        "weight": 0.5},
-    {"muscle_id": "traps_upper",  "weight": 0.5},
-    {"muscle_id": "forearms",     "weight": 0.25}
+    {"muscle_id": "hamstrings_bf_long",         "weight": 1.0},
+    {"muscle_id": "hamstrings_semitendinosus",  "weight": 0.8},
+    {"muscle_id": "hamstrings_semimembranosus", "weight": 0.8},
+    {"muscle_id": "hamstrings_bf_short",        "weight": 0.25},
+    {"muscle_id": "spinal_erectors",            "weight": 1.0},
+    {"muscle_id": "glutes_max",                 "weight": 0.7},
+    {"muscle_id": "glutes_medius",              "weight": 0.25},
+    {"muscle_id": "quads_vastus_lateralis",     "weight": 0.5},
+    {"muscle_id": "quads_vastus_medialis",      "weight": 0.5},
+    {"muscle_id": "quads_vastus_intermedius",   "weight": 0.4},
+    {"muscle_id": "quads_rectus_femoris",       "weight": 0.35},
+    {"muscle_id": "adductors_magnus",           "weight": 0.6},
+    {"muscle_id": "traps_upper",                "weight": 0.6},
+    {"muscle_id": "traps_middle",               "weight": 0.4},
+    {"muscle_id": "rhomboids",                  "weight": 0.4},
+    {"muscle_id": "forearms_grip",              "weight": 0.8},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.3},
+    {"muscle_id": "rectus_abdominis",           "weight": 0.4},
+    {"muscle_id": "obliques",                   "weight": 0.4}
   ]'::jsonb,
+  '{
+    "hamstrings_bf_long": "Primary hip extensor from the floor. BF long crosses both hip and knee, making it the key hamstring head on a hip-dominant hinge. The hamstrings drive the first half of the pull.",
+    "spinal_erectors": "On deadlift (unlike squat), the erectors work against a large flexion moment arm with the bar away from the body. They''re often what fails on a near-max attempt — hence the 1.0 weight.",
+    "glutes_max": "Take over from hamstrings as primary hip extensor approaching lockout. The final third of the pull is glute-dominated.",
+    "quads_rectus_femoris": "Hip flexion at the start position creates a mild two-joint discount. Quads contribute to the initial leg drive off the floor but are secondary to the posterior chain.",
+    "forearms_grip": "Often the limiting factor before the primary muscles fail, especially double-overhand without straps. Mixed grip shifts the demand but grip is still a real constraint."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
@@ -286,12 +297,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '66666666-6666-6666-6666-666666666666',
   '{"stance": "conventional"}'::jsonb,
-  -- DECISION (loaded_position): 'stretched'. Peak tension occurs at the
-  -- bottom (off-the-floor position) where the hips are most flexed and the
-  -- moment arm on the lower back is largest. This is borderline (some
-  -- argue 'mid' since the sticking point is often just past the knees),
-  -- but the hip flexion at start of pull qualifies under conventions §8
-  -- "stretched: peak tension at the bottom of ROM." Surfacing for review.
   'stretched',
   'system', FALSE
 );
@@ -301,6 +306,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -314,27 +320,32 @@ INSERT INTO public.exercises (
   ARRAY['RDL', 'barbell RDL', 'BB romanian deadlift'],
   'lifting',
   'hinge', NULL, 'bilateral',
-  -- Hamstrings 1.0 — clear target (loaded at hip flexion / stretched
-  -- position), confirmed by prompt.
-  -- DECISION (surfaced for confirmation): Glutes 0.5, not 1.0.
-  -- RDL hits glutes well at lockout, but the ENTIRE point of the RDL is the
-  -- stretched-hamstring position. If glutes were the target, you'd
-  -- programme a hip thrust. Per conventions §2 "default to fewer 1.0s when
-  -- borderline" → 0.5. (Would flip to 1.0 if review prefers; both are
-  -- defensible.)
-  -- Lower_back 0.5 — loaded under tension throughout the movement (longer
-  --   moment arm than squat, and unsupported unlike good morning's safety
-  --   bar). Not 1.0 because hamstrings are the clear primary, but solidly
-  --   0.5: a meaningful synergist that fatigues and would be sore.
-  -- Forearms 0.25 — grip-intensive at heavy loads, classic 0.25 case.
-  -- No adductors entry (negligible at standard stance), no quads entry
-  -- (knees stay nearly locked — minimal contribution).
+  -- hamstrings are the uncontested target — loaded at full stretch throughout.
+  -- bf_long/semis at 1.0/0.9 (all three cross the hip). bf_short at 0.4
+  -- (knee-only; knee stays slightly bent = some contribution).
+  -- glutes_max 0.7 — active at hip extension (lockout), not the primary by design.
+  -- spinal_erectors 0.6 — significant lumbar loading from the hinged position.
+  -- forearms_grip 0.7 — heavy RDLs are grip-intensive; often fatigues before hamstrings.
   '[
-    {"muscle_id": "hamstrings",   "weight": 1.0},
-    {"muscle_id": "glutes",       "weight": 0.5},
-    {"muscle_id": "lower_back",   "weight": 0.5},
-    {"muscle_id": "forearms",     "weight": 0.25}
+    {"muscle_id": "hamstrings_bf_long",         "weight": 1.0},
+    {"muscle_id": "hamstrings_semitendinosus",  "weight": 0.9},
+    {"muscle_id": "hamstrings_semimembranosus", "weight": 0.9},
+    {"muscle_id": "hamstrings_bf_short",        "weight": 0.4},
+    {"muscle_id": "glutes_max",                 "weight": 0.7},
+    {"muscle_id": "glutes_medius",              "weight": 0.25},
+    {"muscle_id": "spinal_erectors",            "weight": 0.6},
+    {"muscle_id": "adductors_magnus",           "weight": 0.5},
+    {"muscle_id": "forearms_grip",              "weight": 0.7},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.3},
+    {"muscle_id": "rectus_abdominis",           "weight": 0.3},
+    {"muscle_id": "obliques",                   "weight": 0.3}
   ]'::jsonb,
+  '{
+    "hamstrings_bf_long": "The entire point of the RDL — loaded at length with the hip flexed and knee slightly bent. The eccentric phase (lowering) is where most of the stretch-mediated hypertrophy stimulus occurs. Control the descent.",
+    "hamstrings_bf_short": "Crosses only the knee. Gets some work because the knee is not fully locked, but the hip-crossing heads (BF long, semis) are doing the heavy lifting.",
+    "glutes_max": "Primarily active at the top — contributes to hip extension during the concentric phase. Lower overall than hip thrust because the hamstrings own the stretched position.",
+    "spinal_erectors": "Resist lumbar flexion isometrically while the bar hangs far from the body. Lower back fatigue on heavy RDL is common — not a sign of bad form, a sign of real loading."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'secondary_compound', 'early',
@@ -343,8 +354,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   '77777777-7777-7777-7777-777777777777',
   NULL,
-  -- 'stretched': RDL's whole identity is the stretched hamstring at the
-  -- bottom. Unambiguous per conventions §8.
   'stretched',
   'system', FALSE
 );
@@ -354,6 +363,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -367,39 +377,35 @@ INSERT INTO public.exercises (
   ARRAY['hip thrust', 'BB hip thrust', 'barbell hip thrust'],
   'lifting',
   'hinge', NULL, 'bilateral',
-  -- Glutes 1.0 — uncontested target.
-  -- DECISION (surfaced for confirmation): Hamstrings 0.5.
-  -- Hip thrust is INTENTIONALLY positioned (torso angle, foot placement
-  -- close to hips) to maximize glute contribution and minimize hamstring.
-  -- Hamstrings still contribute as hip extensors and to maintain knee
-  -- flexion against load, but they're not the target by design. 0.5 is the
-  -- right call (meaningful synergist, would fatigue, would be sore).
-  -- 0.25 felt like under-weighting a real contributor. 1.0 would conflict
-  -- with the design intent of the lift.
-  -- Quads omitted — minor isometric only.
-  -- Lower_back omitted — torso is supported on bench through the lift;
-  --   passive support, not loaded.
-  -- Adductors omitted — minor.
-  -- Abs omitted — pelvic positioning matters but bracing is brief.
+  -- glutes_max 1.0 — uncontested target. Peak contraction at the top.
+  -- glutes_medius 0.3 — bilateral movement; pelvic stability role.
+  -- hamstrings 0.5 — assist hip extension; knee-bent position limits full
+  -- contribution (shortened position for BF long, which crosses the knee).
+  -- adductors_magnus 0.4 — acts as hip extensor at lockout.
+  -- Torso supported by bench → no spinal_erectors loading.
   '[
-    {"muscle_id": "glutes",     "weight": 1.0},
-    {"muscle_id": "hamstrings", "weight": 0.5}
+    {"muscle_id": "glutes_max",                 "weight": 1.0},
+    {"muscle_id": "glutes_medius",              "weight": 0.3},
+    {"muscle_id": "hamstrings_bf_long",         "weight": 0.5},
+    {"muscle_id": "hamstrings_semitendinosus",  "weight": 0.5},
+    {"muscle_id": "hamstrings_semimembranosus", "weight": 0.5},
+    {"muscle_id": "adductors_magnus",           "weight": 0.4},
+    {"muscle_id": "adductors_short",            "weight": 0.25},
+    {"muscle_id": "calves_gastrocnemius",       "weight": 0.25}
   ]'::jsonb,
+  '{
+    "glutes_max": "Reaches peak contraction at the top (hips fully extended). The full-extension lockout is what separates hip thrust from RDL for glute development — glutes get both stretch and peak contraction.",
+    "hamstrings_bf_long": "Foot position determines hamstring involvement. Feet close to the hips shorten the hamstrings at the bent-knee position, reducing their contribution. Feet further away increases hamstring ROM.",
+    "adductors_magnus": "Functions as a hip extensor alongside glutes and hamstrings as the hips approach full extension. A secondary benefit most lifters don''t notice."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'secondary_compound', 'anywhere',
-  -- DECISION (surfaced for confirmation): performance_metric = 'weight_x_reps'.
-  -- Standard barbell + bench setup, clean rep counting. Confirmed.
   'weight_x_reps', TRUE, FALSE,
   ARRAY['hip_flexion'],
   '[]'::jsonb,
   '88888888-8888-8888-8888-888888888888',
   NULL,
-  -- 'shortened': peak tension occurs at the TOP of the rep (hips extended,
-  -- glutes maximally contracted). Hip thrust is the canonical
-  -- peak-contraction lower-body movement. Conventions §8 explicitly cites
-  -- "peak-contraction isolation" as 'shortened'; hip thrust is the
-  -- compound analogue.
   'shortened',
   'system', FALSE
 );
@@ -409,6 +415,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -422,37 +429,39 @@ INSERT INTO public.exercises (
   ARRAY['bench press', 'flat bench', 'BB bench', 'barbell bench'],
   'lifting',
   'horizontal_push', NULL, 'bilateral',
-  -- Chest 1.0 — uncontested target.
-  -- DECISION (surfaced for confirmation): Triceps 0.5, Front_delts 0.5.
-  -- Both are real synergists in horizontal pressing, both fatigue during
-  -- a working set, both would be sore if the lift were programmed in
-  -- isolation from triceps/delt accessories. Per conventions §2 default
-  -- ("default to fewer 1.0s") triceps stays 0.5 not 1.0; close-grip bench
-  -- (a future row in this family) is where triceps would arguably be 1.0.
-  -- Front delts 0.5 NOT 0.25: 0.25 would imply stabilizer-only, but front
-  -- delts contribute primary force in horizontal pressing — they're a
-  -- genuine synergist, not a stabilizer. (Spec's bench-press hint in the
-  -- prompt header was 0.5/0.5; matching it.)
-  -- No 0.25 entries: triceps and front delts at 0.5 cover the synergists;
-  -- adding lat (slight isometric) or biceps (zero) would be noise.
+  -- pectorals_sternal 1.0 — flat bench is sternal-dominant (horizontal adduction).
+  -- pectorals_clavicular and abdominal both at 0.6 (assist through ROM; not the primary).
+  -- All three triceps heads at 0.5-0.6 — elbow extension throughout.
+  -- triceps_lateral 0.6 slightly higher (more active in pressing arc).
+  -- delts_anterior 0.5 — genuine pressing synergist via shoulder flexion.
+  -- serratus_anterior 0.3 — scapular protraction under load.
+  -- rotator_cuff_subscapularis 0.25 — internal rotation component at the shoulder.
   '[
-    {"muscle_id": "chest",       "weight": 1.0},
-    {"muscle_id": "triceps",     "weight": 0.5},
-    {"muscle_id": "front_delts", "weight": 0.5}
+    {"muscle_id": "pectorals_sternal",          "weight": 1.0},
+    {"muscle_id": "pectorals_clavicular",       "weight": 0.6},
+    {"muscle_id": "pectorals_abdominal",        "weight": 0.6},
+    {"muscle_id": "triceps_lateral",            "weight": 0.6},
+    {"muscle_id": "triceps_long",               "weight": 0.5},
+    {"muscle_id": "triceps_medial",             "weight": 0.5},
+    {"muscle_id": "delts_anterior",             "weight": 0.5},
+    {"muscle_id": "serratus_anterior",          "weight": 0.3},
+    {"muscle_id": "rotator_cuff_subscapularis", "weight": 0.25},
+    {"muscle_id": "forearms_grip",              "weight": 0.25}
   ]'::jsonb,
+  '{
+    "pectorals_sternal": "Primary head for flat bench — horizontal adduction is exactly what the sternal fibers are built for. The majority of the chest work goes here.",
+    "pectorals_clavicular": "Contributes more at the bottom of the press and more on incline variations. On flat, clavicular fibers assist but sternal fibers dominate.",
+    "triceps_long": "Long head is less active than lateral here because the arm is not overhead (its shoulder attachment is not on stretch). Overhead tricep work — skull crushers, overhead extensions — loads the long head more.",
+    "delts_anterior": "Assists shoulder flexion through the full pressing arc. Bench adds significant front-delt volume when combined with OHP — worth tracking to avoid anterior delt overuse."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
   'weight_x_reps', TRUE, FALSE,
-  -- shoulder_external_rotation: bottom position (bar at chest, elbows tucked
-  -- ~45-75°) is a meaningful ER demand for many lifters; same reasoning that
-  -- got the front squat tagged with ER for the front-rack position.
   ARRAY['shoulder_external_rotation'],
   '[]'::jsonb,
   '99999999-9999-9999-9999-999999999999',
   '{"incline": "flat", "grip": "pronated"}'::jsonb,
-  -- 'stretched': peak tension at the bottom (bar at chest, pecs maximally
-  -- stretched). Standard for any pressing movement.
   'stretched',
   'system', FALSE
 );
@@ -462,6 +471,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -475,26 +485,31 @@ INSERT INTO public.exercises (
   ARRAY['DB bench', 'dumbbell bench', 'flat DB bench', 'DB flat bench'],
   'lifting',
   'horizontal_push', NULL, 'bilateral',
-  -- Same muscle weights as BB bench. The DB version offers greater stretch
-  -- and unilateral stabilization, but at the muscle-weight resolution we
-  -- track (1.0/0.5/0.25), the targets and synergists are the same.
-  -- The differences live in: (a) loaded_position (still stretched, but
-  -- arguably more so — same tag), (b) substitution graph (DB is a
-  -- regression for trainees with pressing imbalances), (c) future
-  -- demand tag if "unilateral_stabilization" is ever added to vocab —
-  -- not adding here per §3 closed vocabulary.
+  -- Same primary targets as BB bench. The DB version allows a deeper stretch
+  -- at the bottom (dumbbells can travel below chest height). At per-head
+  -- resolution the distributions are identical; differences (greater stretch,
+  -- unilateral stabilization demand) are captured in head_emphasis_notes.
   '[
-    {"muscle_id": "chest",       "weight": 1.0},
-    {"muscle_id": "triceps",     "weight": 0.5},
-    {"muscle_id": "front_delts", "weight": 0.5}
+    {"muscle_id": "pectorals_sternal",          "weight": 1.0},
+    {"muscle_id": "pectorals_clavicular",       "weight": 0.6},
+    {"muscle_id": "pectorals_abdominal",        "weight": 0.6},
+    {"muscle_id": "triceps_lateral",            "weight": 0.6},
+    {"muscle_id": "triceps_long",               "weight": 0.5},
+    {"muscle_id": "triceps_medial",             "weight": 0.5},
+    {"muscle_id": "delts_anterior",             "weight": 0.5},
+    {"muscle_id": "serratus_anterior",          "weight": 0.3},
+    {"muscle_id": "rotator_cuff_subscapularis", "weight": 0.25},
+    {"muscle_id": "forearms_grip",              "weight": 0.25}
   ]'::jsonb,
+  '{
+    "pectorals_sternal": "Greater stretch at the bottom vs barbell — dumbbells can go lower than the chest. The increased stretch-to-contraction range may enhance hypertrophy stimulus vs barbell bench for the sternal head.",
+    "pectorals_clavicular": "Neutral or semi-pronated grip (common on DB bench) allows elbows to track more naturally, which can shift slightly more work toward clavicular fibers vs strict pronated barbell bench.",
+    "delts_anterior": "Independent arm movement adds a rotational stability demand not present on barbell bench. Slightly more delt stabilization work per rep."
+  }'::jsonb,
   'dumbbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
   'weight_x_reps', TRUE, FALSE,
-  -- Same ER demand as BB bench (bottom position). DB version arguably has a
-  -- larger ER ROM since the dumbbells can travel further than the bar
-  -- allows; same tag captures it adequately.
   ARRAY['shoulder_external_rotation'],
   '[]'::jsonb,
   '99999999-9999-9999-9999-999999999999',
@@ -508,6 +523,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -519,39 +535,38 @@ INSERT INTO public.exercises (
   'aaaaaaaa-0014-0000-0000-000000000001',
   'Barbell Bent-Over Row',
   ARRAY['BB row', 'bent-over row', 'barbell row', 'pendlay row'],
-  -- Note: Pendlay row is technically a stricter variant (bar reset on floor
-  -- each rep) and could justify a separate row in the same family. Folding
-  -- into aliases for v1 since most users use the terms interchangeably.
   'lifting',
   'horizontal_pull', NULL, 'bilateral',
-  -- Lats 1.0 — clear target.
-  -- DECISION (surfaced for confirmation): Rhomboids 0.5 AND traps_mid_lower
-  -- 0.5 (both at 0.5, neither at 1.0). Both are heavily worked in any
-  -- horizontal row, but neither is "the muscle that limits the lift" —
-  -- that's the lats. Bumping one to 1.0 over the other would be arbitrary;
-  -- bumping both would over-assign 1.0. Per conventions §2 default,
-  -- both stay 0.5.
-  -- Rear_delts 0.5 — meaningful synergist in any row pulling the elbow
-  -- back; classic mid-back-day burn target.
-  -- Biceps 0.5 — assist in any pull; would fatigue first for some users.
-  -- Lower_back 0.5 — bent-over hold creates real lumbar loading (NOT just
-  -- a stabilizer here as it is on squats — the hinged position means the
-  -- erectors are working under significant tension throughout the set).
-  -- Promoting to 0.5 with `lumbar_loading` demand tag is the consistent
-  -- application of conventions §2 examples ("Lower back on barbell back
-  -- squat" cited as a 0.25 case BECAUSE axially loaded with bar on top;
-  -- here the geometry is different — back is horizontal under load, more
-  -- like RDL than back squat).
-  -- Forearms 0.25 — grip-intensive on heavy rows.
+  -- Pronated grip + shoulder-width → lower-lat dominant but rows are balanced
+  -- (Pattern 3): lats_lower 1.0, lats_upper 0.9.
+  -- Pronated grip → brachialis dominant over biceps (Pattern 4):
+  -- brachialis 0.8, biceps_long/short 0.5.
+  -- traps_mid_lower (v1) → split to traps_middle 0.5 + traps_lower 0.4.
+  -- spinal_erectors 0.5 — hinged torso under load; erectors resist the
+  -- significant flexion moment arm (more than squat, similar to RDL).
   '[
-    {"muscle_id": "lats",            "weight": 1.0},
-    {"muscle_id": "rhomboids",       "weight": 0.5},
-    {"muscle_id": "traps_mid_lower", "weight": 0.5},
-    {"muscle_id": "rear_delts",      "weight": 0.5},
-    {"muscle_id": "biceps",          "weight": 0.5},
-    {"muscle_id": "lower_back",      "weight": 0.5},
-    {"muscle_id": "forearms",        "weight": 0.25}
+    {"muscle_id": "lats_lower",                 "weight": 1.0},
+    {"muscle_id": "lats_upper",                 "weight": 0.9},
+    {"muscle_id": "teres_major",                "weight": 0.7},
+    {"muscle_id": "rhomboids",                  "weight": 0.6},
+    {"muscle_id": "traps_middle",               "weight": 0.5},
+    {"muscle_id": "traps_lower",                "weight": 0.4},
+    {"muscle_id": "delts_posterior",            "weight": 0.5},
+    {"muscle_id": "brachialis",                 "weight": 0.8},
+    {"muscle_id": "biceps_long",                "weight": 0.5},
+    {"muscle_id": "biceps_short",               "weight": 0.5},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.5},
+    {"muscle_id": "forearms_grip",              "weight": 0.6},
+    {"muscle_id": "spinal_erectors",            "weight": 0.5},
+    {"muscle_id": "rectus_abdominis",           "weight": 0.3},
+    {"muscle_id": "obliques",                   "weight": 0.3}
   ]'::jsonb,
+  '{
+    "lats_upper": "Grip width and elbow flare both affect lat emphasis. Wider grip shifts toward upper lats; shoulder-width pronated (this default) is slightly lower-lat dominant.",
+    "brachialis": "Pronated grip puts biceps in a mechanically disadvantaged position and shifts elbow flexion work to brachialis. If biceps development is the goal, switch to a supinated or neutral grip row.",
+    "biceps_long": "Reduced contribution vs supinated rowing because the pronated forearm weakens the biceps'' line of pull. The elbow flexion work goes to brachialis and brachioradialis instead.",
+    "spinal_erectors": "The hinged torso position loads the erectors significantly against a large flexion moment arm. Heavy BB rows are a legitimate lower back stimulus — not just a carry-over from being in a hinge position."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
@@ -560,7 +575,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
   '{"grip": "pronated"}'::jsonb,
-  -- 'stretched': peak tension at the bottom (arms extended, lats stretched).
   'stretched',
   'system', FALSE
 );
@@ -570,6 +584,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -583,21 +598,31 @@ INSERT INTO public.exercises (
   ARRAY['chest-supported row', 'CSR', 'incline DB row', 'prone DB row'],
   'lifting',
   'horizontal_pull', NULL, 'bilateral',
-  -- Same upper-back targets as BB row, but the bench support removes
-  -- lower-back load and reduces grip demand somewhat. This is precisely
-  -- why it's a regression / pull-back-day specialist.
-  -- Lats 1.0 (target unchanged), rhomboids/mid-traps/rear-delts/biceps
-  -- all 0.5 (same synergists). Lower_back DROPPED — bench support removes
-  -- the loading that justified 0.5 on BB row. Forearms also dropped to
-  -- keep the entry list focused on what's distinguishing — grip is still
-  -- present but less limit-determining than on BB row.
+  -- Neutral grip + bench support. Neutral grip → brachialis 0.8, biceps 0.6
+  -- (Pattern 4; slightly higher biceps than pronated because neutral is
+  -- brachialis-dominant but allows more biceps than fully pronated).
+  -- Bench support removes spinal_erectors loading vs BB row (machine Rule 5
+  -- analogy: supported position removes the stabilizer demand).
+  -- lats_lower 1.0, lats_upper 0.8 (rows are balanced; neutral grip).
   '[
-    {"muscle_id": "lats",            "weight": 1.0},
-    {"muscle_id": "rhomboids",       "weight": 0.5},
-    {"muscle_id": "traps_mid_lower", "weight": 0.5},
-    {"muscle_id": "rear_delts",      "weight": 0.5},
-    {"muscle_id": "biceps",          "weight": 0.5}
+    {"muscle_id": "lats_lower",                 "weight": 1.0},
+    {"muscle_id": "lats_upper",                 "weight": 0.8},
+    {"muscle_id": "teres_major",                "weight": 0.6},
+    {"muscle_id": "rhomboids",                  "weight": 0.6},
+    {"muscle_id": "traps_middle",               "weight": 0.5},
+    {"muscle_id": "traps_lower",                "weight": 0.4},
+    {"muscle_id": "delts_posterior",            "weight": 0.5},
+    {"muscle_id": "brachialis",                 "weight": 0.8},
+    {"muscle_id": "biceps_long",                "weight": 0.6},
+    {"muscle_id": "biceps_short",               "weight": 0.6},
+    {"muscle_id": "forearms_brachioradialis",   "weight": 0.4},
+    {"muscle_id": "forearms_grip",              "weight": 0.4}
   ]'::jsonb,
+  '{
+    "brachialis": "Neutral grip emphasizes brachialis over biceps — same advantage as hammer curl over regular curl. This exercise gives you back + brachialis work in one movement.",
+    "biceps_long": "Neutral grip (vs supinated) keeps biceps as a meaningful elbow flexor, just not dominant. More biceps contribution here than on the pronated BB row.",
+    "lats_lower": "Chest support lets you focus entirely on the pull without lower-back fatigue limiting sets. Good option on high-volume pulling days when the erectors are already taxed."
+  }'::jsonb,
   'dumbbell', NULL, 5.00, 2.50,
   ARRAY['hypertrophy', 'strength'],
   'secondary_compound', 'anywhere',
@@ -606,7 +631,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
   '{"grip": "neutral", "incline": "incline"}'::jsonb,
-  -- 'stretched': arms hang straight down at bottom, lats stretched.
   'stretched',
   'system', FALSE
 );
@@ -616,6 +640,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -629,39 +654,44 @@ INSERT INTO public.exercises (
   ARRAY['OHP', 'standing press', 'BB overhead press', 'military press'],
   'lifting',
   'vertical_push', NULL, 'bilateral',
-  -- Front_delts 1.0 — clear target.
-  -- DECISION (surfaced for confirmation): Triceps 0.5, Side_delts 0.5.
-  -- Triceps: same logic as bench — meaningful pressing synergist, but front
-  -- delts are the target. 0.5 is consistent with bench. (Could argue 1.0
-  -- on a strict-press where lockout is the sticking point, but defaulting
-  -- to fewer 1.0s.)
-  -- Side delts 0.25 (review-confirmed): they assist abduction at the upper
-  -- portion of the press, but contribution is small enough to be a
-  -- stabilizer-tier callout, not a synergist. Reserves the ≥0.5 weighting
-  -- (and weekly volume credit) for direct lateral work like the lateral
-  -- raise (batch 1).
-  -- Traps_upper 0.5 — significant upward rotation under load.
-  -- Abs 0.25 — anti-extension while standing under bar; conventions §2
-  -- explicitly cites "abs on overhead press" as a correct 0.25 case.
+  -- delts_anterior 1.0 — clear target (shoulder flexion in vertical plane).
+  -- delts_lateral 0.35 — assists abduction in upper ROM; not the primary.
+  -- triceps_long 0.6 — overhead position puts the long head on stretch
+  -- (attached at shoulder = fully lengthened), making it more active than on bench.
+  -- triceps_lateral 0.6 (most active in pressing), triceps_medial 0.5.
+  -- traps_upper 0.6 — upward rotation at top of rep.
+  -- serratus_anterior 0.4 — upward rotation throughout.
+  -- rectus_abdominis / obliques 0.3 — anti-extension while standing under bar.
+  -- rotator cuff at 0.25 — shoulder stabilization under overhead load.
   '[
-    {"muscle_id": "front_delts",  "weight": 1.0},
-    {"muscle_id": "triceps",      "weight": 0.5},
-    {"muscle_id": "traps_upper",  "weight": 0.5},
-    {"muscle_id": "side_delts",   "weight": 0.25},
-    {"muscle_id": "abs",          "weight": 0.25}
+    {"muscle_id": "delts_anterior",               "weight": 1.0},
+    {"muscle_id": "delts_lateral",                "weight": 0.35},
+    {"muscle_id": "triceps_lateral",              "weight": 0.6},
+    {"muscle_id": "triceps_long",                 "weight": 0.6},
+    {"muscle_id": "triceps_medial",               "weight": 0.5},
+    {"muscle_id": "traps_upper",                  "weight": 0.6},
+    {"muscle_id": "serratus_anterior",            "weight": 0.4},
+    {"muscle_id": "rectus_abdominis",             "weight": 0.3},
+    {"muscle_id": "obliques",                     "weight": 0.3},
+    {"muscle_id": "rotator_cuff_supraspinatus",   "weight": 0.25},
+    {"muscle_id": "rotator_cuff_infraspinatus",   "weight": 0.25},
+    {"muscle_id": "forearms_grip",                "weight": 0.25},
+    {"muscle_id": "forearms_wrist_flexors",       "weight": 0.25}
   ]'::jsonb,
+  '{
+    "delts_anterior": "Front delts are the primary mover for vertical pressing. They work through full ROM from bottom to top — one of the few exercises where they get both stretch and peak contraction.",
+    "delts_lateral": "Assists abduction in the upper portion of the press (above ~90°). Not a primary trainer here — add lateral raises if lateral delts are underdeveloped.",
+    "triceps_long": "Overhead position puts the long head in a stretched state (attached at the shoulder, arm elevated = fully lengthened). This is why overhead pressing builds the long head differently from bench pressing.",
+    "rectus_abdominis": "Standing under a bar overhead creates an anti-extension demand — the spine wants to hyperextend under the load. Brace throughout to protect the lumbar spine."
+  }'::jsonb,
   'barbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'main_compound', 'early',
   'weight_x_reps', TRUE, FALSE,
   ARRAY['overhead_rom', 'shoulder_flexion', 'axial_loading', 'thoracic_extension'],
-  -- axial_loading: the bar rests on the front of the shoulders during
-  -- setup and bottom of rep, transmitting load through the spine while
-  -- standing — qualifies under conventions §3.
   '[]'::jsonb,
   'cccccccc-cccc-cccc-cccc-cccccccccccc',
   '{"grip": "pronated"}'::jsonb,
-  -- 'stretched': bar at shoulder level, delts at relative stretch.
   'stretched',
   'system', FALSE
 );
@@ -671,6 +701,7 @@ INSERT INTO public.exercises (
   exercise_id, name, aliases, domain,
   movement_pattern_primary, movement_pattern_secondary, loading_type,
   muscles,
+  head_emphasis_notes,
   equipment_primary, equipment_specific, load_increment_default, load_increment_micro,
   training_modality, default_role, session_position,
   performance_metric, progression_eligible, relative_to_bodyweight,
@@ -684,21 +715,27 @@ INSERT INTO public.exercises (
   ARRAY['seated DB OHP', 'seated DB press', 'seated dumbbell press', 'DB shoulder press'],
   'lifting',
   'vertical_push', NULL, 'bilateral',
-  -- Same shoulder-press synergist pattern as standing BB OHP, BUT:
-  -- - axial_loading demand drops (back is supported by bench).
-  -- - abs 0.25 drops for the same reason.
-  -- This is the consistent application of conventions §2 example: "Abs on
-  -- overhead press (resists extension)" at 0.25 — the demand exists when
-  -- standing, not when seated against a backrest.
-  -- Traps_upper retained at 0.5 — upward rotation demand is the same.
-  -- Side_delts 0.25 retained from standing BB OHP (review-confirmed) —
-  -- stabilizer-tier contribution; reserves ≥0.5 for direct lateral work.
+  -- Same primary targets as standing BB OHP with one key change: back support
+  -- removes the anti-extension demand → drop rectus_abdominis and obliques.
+  -- Core is not a meaningful synergist when seated against a backrest.
+  -- All other distributions match standing OHP.
   '[
-    {"muscle_id": "front_delts",  "weight": 1.0},
-    {"muscle_id": "triceps",      "weight": 0.5},
-    {"muscle_id": "traps_upper",  "weight": 0.5},
-    {"muscle_id": "side_delts",   "weight": 0.25}
+    {"muscle_id": "delts_anterior",               "weight": 1.0},
+    {"muscle_id": "delts_lateral",                "weight": 0.35},
+    {"muscle_id": "triceps_lateral",              "weight": 0.6},
+    {"muscle_id": "triceps_long",                 "weight": 0.6},
+    {"muscle_id": "triceps_medial",               "weight": 0.5},
+    {"muscle_id": "traps_upper",                  "weight": 0.6},
+    {"muscle_id": "serratus_anterior",            "weight": 0.4},
+    {"muscle_id": "rotator_cuff_supraspinatus",   "weight": 0.25},
+    {"muscle_id": "rotator_cuff_infraspinatus",   "weight": 0.25},
+    {"muscle_id": "forearms_grip",                "weight": 0.25}
   ]'::jsonb,
+  '{
+    "delts_anterior": "Same primary role as standing OHP. Seated removes the balance challenge but the front delt stimulus is nearly identical.",
+    "triceps_long": "Overhead position loads the long head through stretch — the single biggest advantage of overhead pressing versus bench for triceps long-head development.",
+    "delts_lateral": "A larger ROM overhead than lateral raise but still secondary here. If lateral delts are a priority, add direct lateral raise work."
+  }'::jsonb,
   'dumbbell', NULL, 5.00, 2.50,
   ARRAY['strength', 'hypertrophy'],
   'secondary_compound', 'anywhere',
@@ -707,9 +744,6 @@ INSERT INTO public.exercises (
   '[]'::jsonb,
   'cccccccc-cccc-cccc-cccc-cccccccccccc',
   '{"grip": "neutral"}'::jsonb,
-  -- Note: many users rotate to pronated at top — neutral represents the
-  -- typical bottom/start position. If wanting to track a strict pronated
-  -- DB press, that's a separate row.
   'stretched',
   'system', FALSE
 );
@@ -764,9 +798,7 @@ INSERT INTO public.exercise_substitutes (exercise_id, substitute_id, similarity_
 
   -- Reciprocal: high-bar back squat (batch 1) → goblet (regression)
   -- and high-bar back squat → low-bar / front squat substitutes added here
-  -- so batch 1's back squat now connects to the new family rows. (Adding
-  -- to the batch-1 row's outgoing edges; non-destructive — these are new
-  -- INSERTs, not updates.)
+  -- so batch 1's back squat now connects to the new family rows.
   ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0006-0000-0000-000000000001', 0.85, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0007-0000-0000-000000000001', 0.80, 'same_muscles_different_pattern'),
   ('aaaaaaaa-0001-0000-0000-000000000001', 'aaaaaaaa-0008-0000-0000-000000000001', 0.65, 'regression'),
@@ -800,8 +832,7 @@ INSERT INTO public.exercise_substitutes (exercise_id, substitute_id, similarity_
   ('aaaaaaaa-0014-0000-0000-000000000001', 'aaaaaaaa-0002-0000-0000-000000000001', 0.55, 'same_muscles_different_pattern'),
 
   -- ── 15. Chest-supported DB row ───────────────────────────────────────────
-  -- No reverse edge to BB row (per prompt: regression direction only).
-  -- But CSR users may benefit from pull-up as a vertical alternative.
+  -- No reverse edge to BB row (regression direction only).
   ('aaaaaaaa-0015-0000-0000-000000000001', 'aaaaaaaa-0002-0000-0000-000000000001', 0.50, 'same_muscles_different_pattern'),
 
   -- ── 16. Standing barbell OHP ─────────────────────────────────────────────
