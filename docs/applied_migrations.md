@@ -35,3 +35,23 @@ Tracks when migrations were actually applied to the Supabase database, separate 
 - **PR:** #11
 - **Merged to main:** 2026-05-15
 - **Notes:** Two-line fix combining sequential TRUNCATE statements into one. Resolved FK constraint blocker on PR B migration. Not separately applied to Supabase — fix was applied as part of the re-run of the corrected migration.
+
+## PR #15 — Add 6 Missing Hypertrophy Exercises + Fix Lateral Raise Orphan
+- **File:** `db/migration_add_missing_hypertrophy_exercises.sql`
+- **PR:** #15
+- **Merged to main:** (pending)
+- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Exercises added (IDs 66–71):**
+  - #66 Cable Fly — Flat (Day 1 pump set)
+  - #67 Cable Fly — Low to High (Day 5)
+  - #68 Straight Arm Pulldown (Day 5, lat isolation)
+  - #69 Preacher Curl — EZ Bar (Day 3)
+  - #70 Cable Overhead Tricep Extension (Day 3)
+  - #71 Rear Delt Fly — Cable (Day 3)
+- **Also fixes:** Dumbbell Lateral Raise (#3) substitution orphan — had 0 outbound edges; adds edge to Cable Lateral Raise (#54).
+- **Suggested verification queries after applying:**
+  - `SELECT COUNT(*) FROM exercises;` — expect 71
+  - `SELECT exercise_id, name FROM exercises WHERE exercise_id IN ('aaaaaaaa-0066-0000-0000-000000000001','aaaaaaaa-0067-0000-0000-000000000001','aaaaaaaa-0068-0000-0000-000000000001','aaaaaaaa-0069-0000-0000-000000000001','aaaaaaaa-0070-0000-0000-000000000001','aaaaaaaa-0071-0000-0000-000000000001');` — expect all 6 rows
+  - `SELECT COUNT(*) FROM exercise_substitutes WHERE exercise_id = 'aaaaaaaa-0003-0000-0000-000000000001';` — expect ≥ 1 (orphan fixed)
+  - Spot-check head_emphasis_notes on #69 (Preacher Curl), #70 (Overhead Ext) — expect non-null
+- **Notes:** Additive-only migration (no TRUNCATE). Safe to re-run; all INSERTs use ON CONFLICT DO NOTHING.
