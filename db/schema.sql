@@ -269,7 +269,11 @@ INSERT INTO public.muscles (muscle_id, display_name) VALUES
   ('neck',            'Neck'),
   ('hip_flexors',     'Hip Flexors'),
   ('adductors',       'Adductors'),
-  ('abductors',       'Abductors')
+  ('abductors',       'Abductors'),
+  -- Added in PR #17 (migration_add_anterior_compartment_muscles.sql).
+  -- Both are singletons in the v2 parent/child taxonomy.
+  ('tibialis_anterior', 'Tibialis Anterior'),
+  ('peroneals',         'Peroneals')
 ON CONFLICT (muscle_id) DO NOTHING;
 
 -- ─── exercises ───────────────────────────────────────────────────────────────
