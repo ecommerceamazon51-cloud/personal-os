@@ -337,7 +337,7 @@ For each new exercise, in order:
    emphasis (grip width, foot position, elbow path, etc.). See §13.
 6. Equipment + load increments — apply §5 defaults unless exercise
    warrants override.
-7. Programming role — modality, default_role, session_position.
+7. Programming role — modality (§15), default_role, session_position (§7).
 8. Performance metric — apply §9 table.
 9. Demands — pick from §3 vocabulary; flag any new tag explicitly.
 10. variation_attributes — apply §4; null if no axis.
@@ -581,7 +581,41 @@ every listed head represents a real training contribution.
 
 ---
 
-## 15. Authoring example: complete v2 exercise
+## 15. `training_modality` vocabulary
+
+The `training_modality TEXT[]` column documents the primary training purpose(s)
+of an exercise. It is not an enum, so any value is accepted by the database;
+this section defines the **canonical** set that authors must use. Do not invent
+new values without adding them here first.
+
+### Allowed values
+
+| Value | Use for |
+|---|---|
+| `strength` | Max-load compound lifts where the primary adaptation is neural or strength-expression (squat, deadlift, bench, OHP, row) |
+| `hypertrophy` | Volume-driven exercises where the primary adaptation is muscle size |
+| `power` | Explosive, high-velocity movements (KB swing, box jump, Olympic lifts, sled push) |
+| `plyometric` | Ballistic or reactive movements with a stretch-shortening cycle (box jump, jump rope) |
+| `stability` | Exercises that train joint stability or motor control under load (single-leg work, pallof press, goblet squat used as mobility/stability drill) |
+| `conditioning` | Aerobic/metabolic training tools (rower, air bike, sled, jump rope) |
+| `skill` | Technique drills where quality reps matter more than load (martial arts, Olympic lift variations, mobility flows) |
+| `mobility` | Exercises whose primary purpose is improving or maintaining ROM (Jefferson curl, loaded stretches, couch stretch) |
+| `joint_health` | Primary purpose is tendon loading, joint prep, prehab, or injury prevention. Often combined with `hypertrophy` or `mobility` on the same exercise — these categories are not mutually exclusive. Examples: Sissy Squat, Tib Raise, Poliquin Step-Up, Nordic Curl, terminal knee extension, rotator cuff work. |
+
+### Rules
+
+- An exercise can have multiple modalities (e.g. `['strength', 'hypertrophy']`,
+  `['joint_health', 'mobility']`). This is the common case — use an array.
+- Order is not significant; list them most-primary first as a convention.
+- Do not assign `skill` or `conditioning` to exercises where those are
+  incidental side effects rather than the exercise's purpose.
+- `joint_health` does not imply `progression_eligible = FALSE`. Tib raises
+  and Nordic curls are loaded progressively. Set `progression_eligible` based
+  on §9 rules, not on modality.
+
+---
+
+## 16. Authoring example: complete v2 exercise
 
 Reference template showing all the v2 patterns applied. Drawn from the
 pilot — see `db/seed_exercises_v1_draft.sql` for the canonical form.
