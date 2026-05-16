@@ -55,3 +55,23 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - `SELECT COUNT(*) FROM exercise_substitutes WHERE exercise_id = 'aaaaaaaa-0003-0000-0000-000000000001';` — expect ≥ 1 (orphan fixed)
   - Spot-check head_emphasis_notes on #69 (Preacher Curl), #70 (Overhead Ext) — expect non-null
 - **Notes:** Additive-only migration (no TRUNCATE). Safe to re-run; all INSERTs use ON CONFLICT DO NOTHING.
+
+## PR #16 — Add 3 Specialty Joint Health Exercises + Strengthen Straight Arm Pulldown Substitutes
+- **File:** `db/migration_add_specialty_joint_health_exercises.sql`
+- **PR:** #16
+- **Merged to main:** (pending)
+- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Exercises added (IDs 72–74):**
+  - #72 Sissy Squat (Day 2, VMO/quad joint health; `training_modality: ['hypertrophy', 'joint_health']`)
+  - #73 Tibialis Raise (Day 2, tibialis anterior joint health; `training_modality: ['hypertrophy', 'joint_health']`)
+  - #74 Poliquin Step-Up (Day 2, VMO rehabilitation; `training_modality: ['hypertrophy', 'joint_health']`)
+- **Also adds:** 2 additional outbound edges for Straight Arm Pulldown (#68) — PR #15 left it with only one outbound edge (→ Pull-Up). Adds #68 → Lat Pulldown (#22) at 0.70, and #68 → Seated Cable Row (#23) at 0.55.
+- **⚠️ Known gap:** `tibialis_anterior` does not exist in the v2 muscles table (67-row taxonomy has no anterior compartment muscles). Exercise #73 is inserted with `muscles: '[]'` and will not contribute to volume tracking. A follow-up PR must add `tibialis_anterior` (and optionally `peroneals`) to the muscles table before #73 is useful for volume attribution.
+- **Suggested verification queries after applying:**
+  - `SELECT COUNT(*) FROM exercises;` — expect 74
+  - `SELECT exercise_id, name FROM exercises WHERE exercise_id IN ('aaaaaaaa-0072-0000-0000-000000000001','aaaaaaaa-0073-0000-0000-000000000001','aaaaaaaa-0074-0000-0000-000000000001');` — expect all 3 rows
+  - `SELECT COUNT(*) FROM exercise_substitutes WHERE exercise_id = 'aaaaaaaa-0068-0000-0000-000000000001';` — expect ≥ 3 (was 1 after PR #15; now adds 2 more)
+  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0072-0000-0000-000000000001';` — expect non-empty JSONB array (7 muscle entries)
+  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` — expect `[]` (known gap; tibialis_anterior not in taxonomy)
+  - `SELECT head_emphasis_notes FROM exercises WHERE exercise_id IN ('aaaaaaaa-0072-0000-0000-000000000001','aaaaaaaa-0074-0000-0000-000000000001');` — expect non-null on both (#72 and #74); expect null on #73 (gap)
+- **Notes:** Additive-only migration (no TRUNCATE). Safe to re-run; all INSERTs use ON CONFLICT DO NOTHING. The `knees_over_toes_tolerance` demand tag requested for #72 does not exist in the §3 vocabulary; using `deep_knee_flexion` + `ankle_dorsiflexion` instead — flag for review if a new tag is warranted.
