@@ -96,3 +96,28 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` — expect 2-element array (tibialis_anterior 1.0, peroneals 0.25)
   - `SELECT e.exercise_id, e.name, elem->>'muscle_id' AS missing_muscle FROM exercises e, jsonb_array_elements(e.muscles) AS elem WHERE elem->>'muscle_id' NOT IN (SELECT muscle_id FROM muscles);` — expect 0 rows
 - **Notes:** Additive-only migration (no TRUNCATE). INSERTs use ON CONFLICT DO NOTHING. The UPDATE on #73 is idempotent. Resolves the `tibialis_anterior` taxonomy gap explicitly documented in PR #16.
+
+## PR #18 — Add 10 Mobility/Skill/Conditioning Protocols + Fix Jump Rope
+- **File:** `db/migration_add_protocols.sql`
+- **PR:** #18
+- **Merged to main:** (pending)
+- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Exercises added (IDs 75–84):**
+  - #75 Shadow Boxing (`['skill', 'conditioning']`)
+  - #76 Heavy Bag Rounds (`['skill', 'conditioning', 'power']`)
+  - #77 Core Circuit (`['stability']`)
+  - #78 Stretching / Mobility (`['mobility']`)
+  - #79 Walk / Light Cardio (`['conditioning']`)
+  - #80 Foam Roll Full Body (`['mobility']`)
+  - #81 Hip Flexor Stretch (`['mobility', 'joint_health']`)
+  - #82 Thoracic Extension (`['mobility', 'joint_health']`)
+  - #83 Dead Hang (`['mobility', 'joint_health']`)
+  - #84 Chin Tucks + Wall Angels (`['mobility', 'joint_health']`)
+- **Also fixes:** Jump Rope (#65) — adds `'plyometric'` to training_modality (was `['conditioning', 'power']`; now `['conditioning', 'power', 'plyometric']`)
+- **Suggested verification queries after applying:**
+  - `SELECT COUNT(*) FROM exercises;` — expect 84
+  - `SELECT exercise_id, name, training_modality FROM exercises WHERE exercise_id IN ('aaaaaaaa-0075-0000-0000-000000000001','aaaaaaaa-0076-0000-0000-000000000001','aaaaaaaa-0077-0000-0000-000000000001','aaaaaaaa-0078-0000-0000-000000000001','aaaaaaaa-0079-0000-0000-000000000001','aaaaaaaa-0080-0000-0000-000000000001','aaaaaaaa-0081-0000-0000-000000000001','aaaaaaaa-0082-0000-0000-000000000001','aaaaaaaa-0083-0000-0000-000000000001','aaaaaaaa-0084-0000-0000-000000000001') ORDER BY exercise_id;` — expect all 10 rows
+  - `SELECT training_modality FROM exercises WHERE exercise_id = 'aaaaaaaa-0065-0000-0000-000000000001';` — expect `{conditioning,power,plyometric}`
+  - Hypertrophy check: 0 rows when filtering new IDs by `training_modality @> ARRAY['hypertrophy']`
+  - Orphan check: 0 rows from muscle_id existence query
+- **Notes:** Additive-only migration (no TRUNCATE). All INSERTs use ON CONFLICT DO NOTHING; the UPDATE on Jump Rope is idempotent. No substitution edges added — protocols are not meaningfully substitutable in the hypertrophy sense.
