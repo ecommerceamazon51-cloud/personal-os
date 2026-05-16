@@ -306,7 +306,10 @@ CREATE TABLE IF NOT EXISTS public.exercises (
 
   -- Programming role
   -- training_modality is TEXT[] not an enum array; values are:
-  -- strength | hypertrophy | power | plyometric | stability | conditioning | skill | mobility
+  -- strength | hypertrophy | power | plyometric | stability | conditioning | skill | mobility | joint_health
+  -- joint_health: primary purpose is tendon loading, joint prep, prehab, or injury prevention.
+  --   Often combined with 'hypertrophy' or 'mobility' on the same exercise — these categories
+  --   are not mutually exclusive.
   -- Kept as TEXT[] so the list can grow without a migration. See calls.
   training_modality TEXT[]        NOT NULL DEFAULT '{}',
   default_role      exercise_role NOT NULL,
