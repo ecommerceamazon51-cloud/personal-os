@@ -75,3 +75,24 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` — expect `[]` (known gap; tibialis_anterior not in taxonomy)
   - `SELECT head_emphasis_notes FROM exercises WHERE exercise_id IN ('aaaaaaaa-0072-0000-0000-000000000001','aaaaaaaa-0074-0000-0000-000000000001');` — expect non-null on both (#72 and #74); expect null on #73 (gap)
 - **Notes:** Additive-only migration (no TRUNCATE). Safe to re-run; all INSERTs use ON CONFLICT DO NOTHING. The `knees_over_toes_tolerance` demand tag requested for #72 does not exist in the §3 vocabulary; using `deep_knee_flexion` + `ankle_dorsiflexion` instead — flag for review if a new tag is warranted.
+
+## PR #17 — Add Anterior-Compartment Muscles + Backfill Tibialis Raise
+- **File:** `db/migration_add_anterior_compartment_muscles.sql`
+- **PR:** #17
+- **Merged to main:** (pending)
+- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Prerequisite:** PR #16 (`migration_add_specialty_joint_health_exercises.sql`) must be applied first — exercise #73 must exist as a row for the UPDATE in PART 2 to find it.
+- **Muscles added:**
+  - `tibialis_anterior` — singleton; prime mover of ankle dorsiflexion; anterior compartment
+  - `peroneals` — singleton; covers peroneus longus + peroneus brevis; ankle eversion + lateral stability
+- **Also fixes:** Tibialis Raise (#73) muscles JSONB — was `'[]'` (known gap from PR #16); now populated:
+  - `tibialis_anterior: 1.0` (sole concentric mover)
+  - `peroneals: 0.25` (ankle stabilizer)
+- **Taxonomy state after applying:** 69 rows total (was 67); singleton count goes from 8 → 10; group and head counts unchanged.
+- **Suggested verification queries after applying:**
+  - `SELECT COUNT(*) FROM muscles;` — expect 69
+  - `SELECT muscle_kind, COUNT(*) FROM muscles_with_kind GROUP BY muscle_kind;` — expect group=15, head=44, singleton=10
+  - `SELECT muscle_id, display_name FROM muscles WHERE muscle_id IN ('tibialis_anterior', 'peroneals');` — expect both rows
+  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` — expect 2-element array (tibialis_anterior 1.0, peroneals 0.25)
+  - `SELECT e.exercise_id, e.name, elem->>'muscle_id' AS missing_muscle FROM exercises e, jsonb_array_elements(e.muscles) AS elem WHERE elem->>'muscle_id' NOT IN (SELECT muscle_id FROM muscles);` — expect 0 rows
+- **Notes:** Additive-only migration (no TRUNCATE). INSERTs use ON CONFLICT DO NOTHING. The UPDATE on #73 is idempotent. Resolves the `tibialis_anterior` taxonomy gap explicitly documented in PR #16.
