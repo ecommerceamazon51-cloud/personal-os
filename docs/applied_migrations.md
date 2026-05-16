@@ -14,7 +14,7 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - Zero v1 muscle_ids remaining in exercises JSONB
   - Zero exercises referencing non-existent muscle_ids
   - Display names verified user-friendly for renames (Chest, Lower Back, Abs, etc.)
-- **Notes:** Schema-only changes. Per-exercise muscle distribution re-authoring deferred to PR B.
+- **Notes:** Schema-only changes. Per-exercise muscle distribution re-authoring deferred to PR B. The `head_emphasis_notes JSONB` column added in this migration was missing from `db/schema.sql` until PR #12 synced the file to match the live DB (no DB change — file-only).
 
 ## PR B — Muscle Taxonomy v2 Exercise Re-Authoring
 - **File:** `db/migration_reseed_exercises_v2.sql`

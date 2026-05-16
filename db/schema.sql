@@ -292,6 +292,10 @@ CREATE TABLE IF NOT EXISTS public.exercises (
   -- muscle_id values should match muscles.muscle_id (no FK; see calls).
   -- Only weights >= 0.5 count toward weekly volume calculations.
   muscles       JSONB           NOT NULL DEFAULT '[]'::jsonb,
+  -- Map of muscle_id → cue text string. Authored at exercise-authoring time;
+  -- explains emphasis differences between heads for use in coaching copy.
+  -- Keys are the per-head muscle_id values used in the muscles array above.
+  head_emphasis_notes JSONB,
 
   -- Equipment
   equipment_primary  exercise_equipment NOT NULL,
