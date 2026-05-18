@@ -132,6 +132,43 @@ var MUSCLE_TARGETS={
   Hamstrings:{min:6,target:12},Glutes:{min:4,target:10},Calves:{min:8,target:12},Core:{min:6,target:10}
 };
 
+// Maps every v2 taxonomy muscle_id → one of the 10 MUSCLE_TARGETS keys.
+// Covers all 69 rows in the muscles table (15 groups + 44 heads + 10 singletons).
+// Grouping decisions for ambiguous muscles:
+//   forearms → Biceps  (no standalone forearms group in this UI)
+//   adductors → Glutes (inner thigh; closest hip-extension group)
+//   hip_flexors → Core (iliopsoas treated as core in this context)
+//   neck → Back        (neck training grouped with traps in this UI)
+//   serratus_anterior → Back (scapular retractor; functionally back)
+var MUSCLE_HEAD_TO_GROUP={
+  pectorals:"Chest",pectorals_clavicular:"Chest",pectorals_sternal:"Chest",pectorals_abdominal:"Chest",
+  lats:"Back",lats_upper:"Back",lats_lower:"Back",
+  traps:"Back",traps_upper:"Back",traps_middle:"Back",traps_lower:"Back",
+  rhomboids:"Back",spinal_erectors:"Back",teres_major:"Back",serratus_anterior:"Back",
+  rotator_cuff:"Back",rotator_cuff_supraspinatus:"Back",rotator_cuff_infraspinatus:"Back",
+  rotator_cuff_teres_minor:"Back",rotator_cuff_subscapularis:"Back",
+  neck:"Back",neck_flexors:"Back",neck_extensors:"Back",
+  deltoids:"Shoulders",delts_anterior:"Shoulders",delts_lateral:"Shoulders",delts_posterior:"Shoulders",
+  biceps:"Biceps",biceps_long:"Biceps",biceps_short:"Biceps",brachialis:"Biceps",
+  forearms:"Biceps",forearms_wrist_flexors:"Biceps",forearms_wrist_extensors:"Biceps",
+  forearms_brachioradialis:"Biceps",forearms_grip:"Biceps",
+  triceps:"Triceps",triceps_long:"Triceps",triceps_lateral:"Triceps",triceps_medial:"Triceps",
+  quads:"Quads",quads_rectus_femoris:"Quads",quads_vastus_lateralis:"Quads",
+  quads_vastus_medialis:"Quads",quads_vastus_intermedius:"Quads",
+  hamstrings:"Hamstrings",hamstrings_bf_long:"Hamstrings",hamstrings_bf_short:"Hamstrings",
+  hamstrings_semitendinosus:"Hamstrings",hamstrings_semimembranosus:"Hamstrings",
+  glutes:"Glutes",glutes_max:"Glutes",glutes_medius:"Glutes",glutes_minimus:"Glutes",
+  adductors:"Glutes",adductors_magnus:"Glutes",adductors_short:"Glutes",
+  calves:"Calves",calves_gastrocnemius:"Calves",calves_soleus:"Calves",
+  tibialis_anterior:"Calves",peroneals:"Calves",
+  rectus_abdominis:"Core",obliques:"Core",transverse_abdominis:"Core",
+  hip_flexors:"Core",hip_flexors_iliopsoas:"Core",hip_flexors_tfl:"Core",hip_flexors_sartorius:"Core"
+};
+
+// Module-level cache: exercise_id → exercises row. Populated by loadExerciseDB()
+// after auth. null = not yet loaded (or fetch failed); fall back to hardcoded muscles.
+var gExerciseDB=null;
+
 var SECTIONS={
 overview:{icon:"◆",label:"OVERVIEW",color:C.white,subs:[
   {t:"IDENTITY",i:["Consolidate → Stabilize → Scale","Physically strong. Consistent training.","Goal: disciplined, leveraged, internally respected."]},
@@ -260,11 +297,33 @@ function buildHistoryFromRows(wrows,crows){
     rows.forEach(function(row){
       if(!row.is_done)return;
       var ex=wo.exercises[row.exercise_idx];
-      if(!ex||!ex.muscles)return;
-      ex.muscles.forEach(function(m){if(weeklyMuscles.hasOwnProperty(m))weeklyMuscles[m]++;});
+      if(!ex)return;
+      var dbRow=gExerciseDB&&ex.exercise_id?gExerciseDB[ex.exercise_id]:null;
+      if(dbRow){
+        // DB path: per-head weights, weight>=0.5 threshold, dedup to one count per flat group
+        if(Array.isArray(dbRow.muscles)){
+          var groups=new Set();
+          dbRow.muscles.forEach(function(entry){
+            if(entry.weight>=0.5){var g=MUSCLE_HEAD_TO_GROUP[entry.muscle_id];if(g)groups.add(g);}
+          });
+          groups.forEach(function(g){weeklyMuscles[g]++;});
+        }
+      } else {
+        // Fallback: hardcoded ex.muscles flat-group array (DB not loaded or exercise not found)
+        if(ex.muscles){ex.muscles.forEach(function(m){if(weeklyMuscles.hasOwnProperty(m))weeklyMuscles[m]++;});}
+      }
     });
   });
   return{sessions:sessions,prs:prs,checkHistory:checkHistory.reverse(),currentStreak:currentStreak,longestStreak:longestStreak,weeklyVolume:weeklyVolume,weeklyMuscles:weeklyMuscles};
+}
+
+function loadExerciseDB(){
+  sb.from("exercises").select("exercise_id,muscles").then(function(r){
+    if(r.error||!r.data){console.warn("[muscle-rollup] exercises fetch failed, using hardcoded fallback",r.error);return;}
+    var map={};
+    r.data.forEach(function(row){map[row.exercise_id]=row;});
+    gExerciseDB=map;
+  });
 }
 
 function getGhostFromHistory(sessions,todayDate){
@@ -529,12 +588,12 @@ function App(){
 
   useEffect(function(){
     sb.auth.getSession().then(function(r){
-      if(r.data&&r.data.session){setUser(r.data.session.user);loadProfile(r.data.session.user.id);}
+      if(r.data&&r.data.session){setUser(r.data.session.user);loadProfile(r.data.session.user.id);loadExerciseDB();}
       else setAuthState("unauthed");
     });
     var authSub=sb.auth.onAuthStateChange(function(event,session){
-      if(event==="SIGNED_IN"&&session){setUser(session.user);loadProfile(session.user.id);}
-      if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setAuthState("unauthed");setHistData(null);setWlog({});setChecks({});setNutLog([]);setRecentFoods([]);}
+      if(event==="SIGNED_IN"&&session){setUser(session.user);loadProfile(session.user.id);loadExerciseDB();}
+      if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setAuthState("unauthed");setHistData(null);setWlog({});setChecks({});setNutLog([]);setRecentFoods([]);gExerciseDB=null;}
     });
     return function(){authSub.data.subscription.unsubscribe();};
   },[]);
