@@ -62,67 +62,67 @@ var CHECKLIST=[
 
 var WORKOUTS={
   1:{name:"CHEST + BACK — HEAVY",focus:"Pull-ups, Fly Pump, Bench, Row, Incline DB, Face Pulls, Abs",exercises:[
-    {name:"Pull-Ups (Wide Grip)",sets:4,reps:"6-8",note:"Back first",timerType:"compound",muscles:["Back","Biceps"]},
-    {name:"Cable Fly (Pump Set)",sets:3,reps:"15-20",note:"Blood flow",timerType:"accessory",muscles:["Chest"]},
-    {name:"Flat Barbell Bench Press",sets:4,reps:"5-6",note:"PR exercise",timerType:"heavy",muscles:["Chest","Triceps","Shoulders"]},
-    {name:"Barbell Row",sets:4,reps:"6-8",note:"Overhand grip",timerType:"compound",muscles:["Back","Biceps"]},
-    {name:"Incline DB Press (30°)",sets:3,reps:"8-10",note:"Upper chest",timerType:"compound",muscles:["Chest","Triceps","Shoulders"]},
-    {name:"Face Pulls",sets:3,reps:"15-20",note:"Rear delt + rotator",timerType:"accessory",muscles:["Shoulders","Back"]},
-    {name:"Cable Crunch",sets:3,reps:"12-15",note:"Abs to finish",timerType:"accessory",muscles:["Core"]}
+    {name:"Pull-Ups (Wide Grip)",sets:4,reps:"6-8",note:"Back first",timerType:"compound",muscles:["Back","Biceps"],exercise_id:"aaaaaaaa-0002-0000-0000-000000000001"},
+    {name:"Cable Fly (Pump Set)",sets:3,reps:"15-20",note:"Blood flow",timerType:"accessory",muscles:["Chest"],exercise_id:"aaaaaaaa-0066-0000-0000-000000000001"},
+    {name:"Flat Barbell Bench Press",sets:4,reps:"5-6",note:"PR exercise",timerType:"heavy",muscles:["Chest","Triceps","Shoulders"],exercise_id:"aaaaaaaa-0012-0000-0000-000000000001"},
+    {name:"Barbell Row",sets:4,reps:"6-8",note:"Overhand grip",timerType:"compound",muscles:["Back","Biceps"],exercise_id:"aaaaaaaa-0014-0000-0000-000000000001"},
+    {name:"Incline DB Press (30°)",sets:3,reps:"8-10",note:"Upper chest",timerType:"compound",muscles:["Chest","Triceps","Shoulders"],exercise_id:"aaaaaaaa-0019-0000-0000-000000000001"},
+    {name:"Face Pulls",sets:3,reps:"15-20",note:"Rear delt + rotator",timerType:"accessory",muscles:["Shoulders","Back"],exercise_id:"aaaaaaaa-0042-0000-0000-000000000001"},
+    {name:"Cable Crunch",sets:3,reps:"12-15",note:"Abs to finish",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0034-0000-0000-000000000001"}
   ]},
   2:{name:"LEGS — QUAD DOMINANT",focus:"Leg Ext, Front Squat, Calves, Bulgarian, Sissy, Tib, Poliquin, Abs",exercises:[
-    {name:"Leg Extensions",sets:3,reps:"15-20",note:"Warm up knees",timerType:"accessory",muscles:["Quads"]},
-    {name:"Front Squat",sets:4,reps:"6-8",note:"Quad dominant",timerType:"heavy",muscles:["Quads","Glutes","Core"]},
-    {name:"Standing Calf Raises",sets:4,reps:"12-15",note:"Full ROM",timerType:"accessory",muscles:["Calves"]},
-    {name:"Bulgarian Split Squat",sets:3,reps:"10-12/leg",note:"SS with Sissy",timerType:"compound",muscles:["Quads","Glutes"]},
-    {name:"Sissy Squat",sets:3,reps:"12-15",note:"SS with Bulgarian",timerType:"accessory",muscles:["Quads"]},
-    {name:"Tib Raises",sets:3,reps:"15-20",note:"Tibialis anterior",timerType:"accessory",muscles:["Core"]},
-    {name:"Poliquin Step-Ups",sets:3,reps:"12-15/leg",note:"VMO",timerType:"accessory",muscles:["Quads","Glutes"]},
-    {name:"Ab Wheel / Plank",sets:3,reps:"10-12",note:"Abs to finish",timerType:"accessory",muscles:["Core"]}
+    {name:"Leg Extensions",sets:3,reps:"15-20",note:"Warm up knees",timerType:"accessory",muscles:["Quads"],exercise_id:"aaaaaaaa-0025-0000-0000-000000000001"},
+    {name:"Front Squat",sets:4,reps:"6-8",note:"Quad dominant",timerType:"heavy",muscles:["Quads","Glutes","Core"],exercise_id:"aaaaaaaa-0007-0000-0000-000000000001"},
+    {name:"Standing Calf Raises",sets:4,reps:"12-15",note:"Full ROM",timerType:"accessory",muscles:["Calves"],exercise_id:"aaaaaaaa-0026-0000-0000-000000000001"},
+    {name:"Bulgarian Split Squat",sets:3,reps:"10-12/leg",note:"SS with Sissy",timerType:"compound",muscles:["Quads","Glutes"],exercise_id:"aaaaaaaa-0004-0000-0000-000000000001"},
+    {name:"Sissy Squat",sets:3,reps:"12-15",note:"SS with Bulgarian",timerType:"accessory",muscles:["Quads"],exercise_id:"aaaaaaaa-0072-0000-0000-000000000001"},
+    {name:"Tib Raises",sets:3,reps:"15-20",note:"Tibialis anterior",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0073-0000-0000-000000000001"},
+    {name:"Poliquin Step-Ups",sets:3,reps:"12-15/leg",note:"VMO",timerType:"accessory",muscles:["Quads","Glutes"],exercise_id:"aaaaaaaa-0074-0000-0000-000000000001"},
+    {name:"Ab Wheel",sets:3,reps:"10-12",note:"Abs to finish",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0033-0000-0000-000000000001"}
   ]},
   3:{name:"SHOULDERS + ARMS",focus:"OHP, Preacher, OH Tri, Lat Raise, Incline Curl, Skulls, Rear Delt, Abs",exercises:[
-    {name:"Overhead Press (Barbell)",sets:4,reps:"6-8",note:"PR exercise",timerType:"heavy",muscles:["Shoulders","Triceps"]},
-    {name:"Preacher Curl (EZ Bar)",sets:3,reps:"10-12",note:"Short head",timerType:"accessory",muscles:["Biceps"]},
-    {name:"Overhead Tricep Extension",sets:3,reps:"10-12",note:"Long head",timerType:"accessory",muscles:["Triceps"]},
-    {name:"Lateral Raises (DB)",sets:4,reps:"12-15",note:"No momentum",timerType:"accessory",muscles:["Shoulders"]},
-    {name:"Incline DB Curl (45°)",sets:3,reps:"10-12",note:"Long head",timerType:"accessory",muscles:["Biceps"]},
-    {name:"Skull Crushers (EZ Bar)",sets:3,reps:"10-12",note:"Lateral head",timerType:"accessory",muscles:["Triceps"]},
-    {name:"Rear Delt Fly (Cable)",sets:3,reps:"15-20",note:"Posture",timerType:"accessory",muscles:["Shoulders","Back"]},
-    {name:"Hanging Leg Raise",sets:3,reps:"12-15",note:"Abs to finish",timerType:"accessory",muscles:["Core"]}
+    {name:"Overhead Press (Barbell)",sets:4,reps:"6-8",note:"PR exercise",timerType:"heavy",muscles:["Shoulders","Triceps"],exercise_id:"aaaaaaaa-0016-0000-0000-000000000001"},
+    {name:"Preacher Curl (EZ Bar)",sets:3,reps:"10-12",note:"Short head",timerType:"accessory",muscles:["Biceps"],exercise_id:"aaaaaaaa-0069-0000-0000-000000000001"},
+    {name:"Overhead Tricep Extension",sets:3,reps:"10-12",note:"Long head",timerType:"accessory",muscles:["Triceps"],exercise_id:"aaaaaaaa-0070-0000-0000-000000000001"},
+    {name:"Lateral Raises (DB)",sets:4,reps:"12-15",note:"No momentum",timerType:"accessory",muscles:["Shoulders"],exercise_id:"aaaaaaaa-0003-0000-0000-000000000001"},
+    {name:"Incline DB Curl (45°)",sets:3,reps:"10-12",note:"Long head",timerType:"accessory",muscles:["Biceps"],exercise_id:"aaaaaaaa-0053-0000-0000-000000000001"},
+    {name:"Skull Crushers (EZ Bar)",sets:3,reps:"10-12",note:"Lateral head",timerType:"accessory",muscles:["Triceps"],exercise_id:"aaaaaaaa-0051-0000-0000-000000000001"},
+    {name:"Rear Delt Fly (Cable)",sets:3,reps:"15-20",note:"Posture",timerType:"accessory",muscles:["Shoulders","Back"],exercise_id:"aaaaaaaa-0071-0000-0000-000000000001"},
+    {name:"Hanging Leg Raise",sets:3,reps:"12-15",note:"Abs to finish",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0032-0000-0000-000000000001"}
   ]},
   4:{name:"COMBAT / ACTIVE RECOVERY",focus:"Heavy bag, shadow boxing, mobility",exercises:[
-    {name:"Jump Rope",sets:1,reps:"5 min",note:"Warm up",timerType:"accessory",muscles:["Core"]},
-    {name:"Shadow Boxing",sets:3,reps:"3 min rounds",note:"Combos",timerType:"compound",muscles:["Core","Shoulders"]},
-    {name:"Heavy Bag Rounds",sets:5,reps:"3 min rounds",note:"Power",timerType:"compound",muscles:["Core","Shoulders"]},
-    {name:"Core Circuit",sets:3,reps:"45s each",note:"Plank, twist, leg raise",timerType:"accessory",muscles:["Core"]},
-    {name:"Stretching / Mobility",sets:1,reps:"15 min",note:"Full body",timerType:"accessory",muscles:[]}
+    {name:"Jump Rope",sets:1,reps:"5 min",note:"Warm up",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0065-0000-0000-000000000001"},
+    {name:"Shadow Boxing",sets:3,reps:"3 min rounds",note:"Combos",timerType:"compound",muscles:["Core","Shoulders"],exercise_id:"aaaaaaaa-0075-0000-0000-000000000001"},
+    {name:"Heavy Bag Rounds",sets:5,reps:"3 min rounds",note:"Power",timerType:"compound",muscles:["Core","Shoulders"],exercise_id:"aaaaaaaa-0076-0000-0000-000000000001"},
+    {name:"Core Circuit",sets:3,reps:"45s each",note:"Plank, twist, leg raise",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0077-0000-0000-000000000001"},
+    {name:"Stretching / Mobility",sets:1,reps:"15 min",note:"Full body",timerType:"accessory",muscles:[],exercise_id:"aaaaaaaa-0078-0000-0000-000000000001"}
   ]},
   5:{name:"CHEST + BACK — VOLUME",focus:"Lat Pulldown, Cable Fly, Incline Bench, Cable Row, DB Press, Abs",exercises:[
-    {name:"Lat Pulldown (Wide)",sets:4,reps:"10-12",note:"Back first",timerType:"compound",muscles:["Back","Biceps"]},
-    {name:"Cable Fly (Low to High)",sets:3,reps:"12-15",note:"Upper chest",timerType:"accessory",muscles:["Chest"]},
-    {name:"Incline Barbell Bench",sets:4,reps:"8-10",note:"Moderate weight",timerType:"compound",muscles:["Chest","Triceps","Shoulders"]},
-    {name:"Seated Cable Row",sets:4,reps:"10-12",note:"Squeeze",timerType:"compound",muscles:["Back","Biceps"]},
-    {name:"DB Flat Press",sets:3,reps:"10-12",note:"Full ROM",timerType:"compound",muscles:["Chest","Triceps"]},
-    {name:"Straight Arm Pulldown",sets:3,reps:"12-15",note:"Lat isolation",timerType:"accessory",muscles:["Back"]},
-    {name:"Cable Crunch",sets:3,reps:"15-20",note:"Abs to finish",timerType:"accessory",muscles:["Core"]}
+    {name:"Lat Pulldown (Wide)",sets:4,reps:"10-12",note:"Back first",timerType:"compound",muscles:["Back","Biceps"],exercise_id:"aaaaaaaa-0022-0000-0000-000000000001"},
+    {name:"Cable Fly (Low to High)",sets:3,reps:"12-15",note:"Upper chest",timerType:"accessory",muscles:["Chest"],exercise_id:"aaaaaaaa-0067-0000-0000-000000000001"},
+    {name:"Incline Barbell Bench",sets:4,reps:"8-10",note:"Moderate weight",timerType:"compound",muscles:["Chest","Triceps","Shoulders"],exercise_id:"aaaaaaaa-0018-0000-0000-000000000001"},
+    {name:"Seated Cable Row",sets:4,reps:"10-12",note:"Squeeze",timerType:"compound",muscles:["Back","Biceps"],exercise_id:"aaaaaaaa-0023-0000-0000-000000000001"},
+    {name:"DB Flat Press",sets:3,reps:"10-12",note:"Full ROM",timerType:"compound",muscles:["Chest","Triceps"],exercise_id:"aaaaaaaa-0013-0000-0000-000000000001"},
+    {name:"Straight Arm Pulldown",sets:3,reps:"12-15",note:"Lat isolation",timerType:"accessory",muscles:["Back"],exercise_id:"aaaaaaaa-0068-0000-0000-000000000001"},
+    {name:"Cable Crunch",sets:3,reps:"15-20",note:"Abs to finish",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0034-0000-0000-000000000001"}
   ]},
   6:{name:"LEGS — POSTERIOR + POWER",focus:"Leg Curl, Trap Bar DL, Calves, Hip Thrust, RDL, Lunges, Box Jumps, Abs",exercises:[
-    {name:"Lying Leg Curl",sets:3,reps:"12-15",note:"Warm hamstrings",timerType:"accessory",muscles:["Hamstrings"]},
-    {name:"Trap Bar Deadlift",sets:4,reps:"5-6",note:"PR exercise",timerType:"heavy",muscles:["Hamstrings","Glutes","Back","Quads"]},
-    {name:"Seated Calf Raises",sets:4,reps:"15-20",note:"Soleus focus",timerType:"accessory",muscles:["Calves"]},
-    {name:"Hip Thrust (Barbell)",sets:4,reps:"8-10",note:"Pause at top",timerType:"compound",muscles:["Glutes","Hamstrings"]},
-    {name:"Romanian Deadlift",sets:3,reps:"10-12",note:"Hamstring stretch",timerType:"compound",muscles:["Hamstrings","Glutes","Back"]},
-    {name:"Walking Lunges (DB)",sets:3,reps:"12/leg",note:"Stability",timerType:"compound",muscles:["Quads","Glutes","Hamstrings"]},
-    {name:"Box Jumps",sets:3,reps:"5",note:"Full reset",timerType:"compound",muscles:["Quads","Glutes"]},
-    {name:"Ab Wheel",sets:3,reps:"10-12",note:"Abs to finish",timerType:"accessory",muscles:["Core"]}
+    {name:"Lying Leg Curl",sets:3,reps:"12-15",note:"Warm hamstrings",timerType:"accessory",muscles:["Hamstrings"],exercise_id:"aaaaaaaa-0024-0000-0000-000000000001"},
+    {name:"Trap Bar Deadlift",sets:4,reps:"5-6",note:"PR exercise",timerType:"heavy",muscles:["Hamstrings","Glutes","Back","Quads"],exercise_id:"aaaaaaaa-0056-0000-0000-000000000001"},
+    {name:"Seated Calf Raises",sets:4,reps:"15-20",note:"Soleus focus",timerType:"accessory",muscles:["Calves"],exercise_id:"aaaaaaaa-0044-0000-0000-000000000001"},
+    {name:"Hip Thrust (Barbell)",sets:4,reps:"8-10",note:"Pause at top",timerType:"compound",muscles:["Glutes","Hamstrings"],exercise_id:"aaaaaaaa-0011-0000-0000-000000000001"},
+    {name:"Romanian Deadlift",sets:3,reps:"10-12",note:"Hamstring stretch",timerType:"compound",muscles:["Hamstrings","Glutes","Back"],exercise_id:"aaaaaaaa-0010-0000-0000-000000000001"},
+    {name:"Walking Lunges (DB)",sets:3,reps:"12/leg",note:"Stability",timerType:"compound",muscles:["Quads","Glutes","Hamstrings"],exercise_id:"aaaaaaaa-0043-0000-0000-000000000001"},
+    {name:"Box Jumps",sets:3,reps:"5",note:"Full reset",timerType:"compound",muscles:["Quads","Glutes"],exercise_id:"aaaaaaaa-0061-0000-0000-000000000001"},
+    {name:"Ab Wheel",sets:3,reps:"10-12",note:"Abs to finish",timerType:"accessory",muscles:["Core"],exercise_id:"aaaaaaaa-0033-0000-0000-000000000001"}
   ]},
   0:{name:"RECOVERY + MOBILITY",focus:"Walk, foam roll, stretching, posture work",exercises:[
-    {name:"Walk / Light Cardio",sets:1,reps:"30 min",note:"Zone 2",timerType:"accessory",muscles:[]},
-    {name:"Foam Roll Full Body",sets:1,reps:"15 min",note:"All major groups",timerType:"accessory",muscles:[]},
-    {name:"Hip Flexor Stretch",sets:3,reps:"60s/side",note:"Deep lunge",timerType:"accessory",muscles:[]},
-    {name:"Thoracic Extension",sets:3,reps:"10-12",note:"Over roller",timerType:"accessory",muscles:[]},
-    {name:"Dead Hang",sets:3,reps:"30-60s",note:"Decompress",timerType:"accessory",muscles:["Back"]},
-    {name:"Chin Tucks + Wall Angels",sets:3,reps:"15",note:"Posture",timerType:"accessory",muscles:["Back"]}
+    {name:"Walk / Light Cardio",sets:1,reps:"30 min",note:"Zone 2",timerType:"accessory",muscles:[],exercise_id:"aaaaaaaa-0079-0000-0000-000000000001"},
+    {name:"Foam Roll Full Body",sets:1,reps:"15 min",note:"All major groups",timerType:"accessory",muscles:[],exercise_id:"aaaaaaaa-0080-0000-0000-000000000001"},
+    {name:"Hip Flexor Stretch",sets:3,reps:"60s/side",note:"Deep lunge",timerType:"accessory",muscles:[],exercise_id:"aaaaaaaa-0081-0000-0000-000000000001"},
+    {name:"Thoracic Extension",sets:3,reps:"10-12",note:"Over roller",timerType:"accessory",muscles:[],exercise_id:"aaaaaaaa-0082-0000-0000-000000000001"},
+    {name:"Dead Hang",sets:3,reps:"30-60s",note:"Decompress",timerType:"accessory",muscles:["Back"],exercise_id:"aaaaaaaa-0083-0000-0000-000000000001"},
+    {name:"Chin Tucks + Wall Angels",sets:3,reps:"15",note:"Posture",timerType:"accessory",muscles:["Back"],exercise_id:"aaaaaaaa-0084-0000-0000-000000000001"}
   ]}
 };
 
