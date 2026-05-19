@@ -2,6 +2,14 @@
 
 Tracks when migrations were actually applied to the Supabase database, separate from when their PRs merged to main. Per project convention, "merged to main ≠ applied to Supabase" — this file is the source of truth for what's live.
 
+## PR #4 / PR #5 — Extend movement_pattern Enum
+- **File:** `db/migration_extend_movement_pattern_enum.sql`
+- **PR:** #4 (initial), #5 (transaction-split fix)
+- **Merged to main:** 2026-05-06
+- **Applied to Supabase:** Before 2026-05-15 — confirmed applied (retroactive entry; exact apply date unknown)
+- **Verification:** `SELECT enumlabel FROM pg_enum WHERE enumtypid = 'movement_pattern'::regtype AND enumlabel IN ('knee_flexion','knee_extension','elbow_flexion','elbow_extension','ankle_plantarflexion','shoulder_abduction','anti_extension','anti_lateral_flexion');` → 8 rows confirmed
+- **Notes:** Retroactive log entry — this migration was never logged when applied. Proof of apply: `migration_reseed_exercises_v2.sql` (applied 2026-05-15) uses all 8 new enum values in its INSERTs; the reseed's successful application on that date proves these values were already live. Adds `knee_flexion`, `knee_extension`, `elbow_flexion`, `elbow_extension`, `ankle_plantarflexion`, `shoulder_abduction`, `anti_extension`, `anti_lateral_flexion` to the `movement_pattern` enum, and corrects 6 exercise rows from closest-fit stubs to accurate patterns. The 6 UPDATEs in Part 2 are now no-ops — the reseed re-inserted those rows with the correct values. Apply note: requires a two-step run in SQL Editor — Part 1 (ALTER TYPE) and Part 2 (BEGIN/COMMIT block) must be pasted separately due to Postgres error 55P04.
+
 ## PR A — Muscle Taxonomy v2 Schema Migration
 - **File:** `db/migration_muscle_taxonomy_v2.sql`
 - **PR:** #8
@@ -40,7 +48,7 @@ Tracks when migrations were actually applied to the Supabase database, separate 
 - **File:** `db/migration_add_missing_hypertrophy_exercises.sql`
 - **PR:** #15
 - **Merged to main:** (pending)
-- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Applied to Supabase:** 2026-05-19 — confirmed applied (exact apply date unknown; verified via live DB count check)
 - **Exercises added (IDs 66–71):**
   - #66 Cable Fly — Flat (Day 1 pump set)
   - #67 Cable Fly — Low to High (Day 5)
@@ -49,38 +57,34 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - #70 Cable Overhead Tricep Extension (Day 3)
   - #71 Rear Delt Fly — Cable (Day 3)
 - **Also fixes:** Dumbbell Lateral Raise (#3) substitution orphan — had 0 outbound edges; adds edge to Cable Lateral Raise (#54).
-- **Suggested verification queries after applying:**
-  - `SELECT COUNT(*) FROM exercises;` — expect 71
-  - `SELECT exercise_id, name FROM exercises WHERE exercise_id IN ('aaaaaaaa-0066-0000-0000-000000000001','aaaaaaaa-0067-0000-0000-000000000001','aaaaaaaa-0068-0000-0000-000000000001','aaaaaaaa-0069-0000-0000-000000000001','aaaaaaaa-0070-0000-0000-000000000001','aaaaaaaa-0071-0000-0000-000000000001');` — expect all 6 rows
-  - `SELECT COUNT(*) FROM exercise_substitutes WHERE exercise_id = 'aaaaaaaa-0003-0000-0000-000000000001';` — expect ≥ 1 (orphan fixed)
-  - Spot-check head_emphasis_notes on #69 (Preacher Curl), #70 (Overhead Ext) — expect non-null
-- **Notes:** Additive-only migration (no TRUNCATE). Safe to re-run; all INSERTs use ON CONFLICT DO NOTHING.
+- **Verification results:**
+  - `SELECT COUNT(*) FROM exercises;` → 84 (cumulative after all 4 migrations applied; this migration takes count 65 → 71)
+  - `SELECT COUNT(*) FROM exercises WHERE exercise_id IN ('aaaaaaaa-0066-0000-0000-000000000001','aaaaaaaa-0067-0000-0000-000000000001','aaaaaaaa-0068-0000-0000-000000000001','aaaaaaaa-0069-0000-0000-000000000001','aaaaaaaa-0070-0000-0000-000000000001','aaaaaaaa-0071-0000-0000-000000000001');` → 6
+  - `SELECT COUNT(*) FROM exercise_substitutes WHERE exercise_id = 'aaaaaaaa-0003-0000-0000-000000000001';` → ≥ 1 (lateral raise orphan fixed)
+- **Notes:** Retroactive log entry — migration was applied to Supabase before this doc update; status confirmed via live DB query on 2026-05-19. Additive-only migration (no TRUNCATE). All INSERTs use ON CONFLICT DO NOTHING.
 
 ## PR #16 — Add 3 Specialty Joint Health Exercises + Strengthen Straight Arm Pulldown Substitutes
 - **File:** `db/migration_add_specialty_joint_health_exercises.sql`
 - **PR:** #16
 - **Merged to main:** (pending)
-- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Applied to Supabase:** 2026-05-19 — confirmed applied (exact apply date unknown; verified via live DB count check)
 - **Exercises added (IDs 72–74):**
   - #72 Sissy Squat (Day 2, VMO/quad joint health; `training_modality: ['hypertrophy', 'joint_health']`)
   - #73 Tibialis Raise (Day 2, tibialis anterior joint health; `training_modality: ['hypertrophy', 'joint_health']`)
   - #74 Poliquin Step-Up (Day 2, VMO rehabilitation; `training_modality: ['hypertrophy', 'joint_health']`)
 - **Also adds:** 2 additional outbound edges for Straight Arm Pulldown (#68) — PR #15 left it with only one outbound edge (→ Pull-Up). Adds #68 → Lat Pulldown (#22) at 0.70, and #68 → Seated Cable Row (#23) at 0.55.
-- **⚠️ Known gap:** `tibialis_anterior` does not exist in the v2 muscles table (67-row taxonomy has no anterior compartment muscles). Exercise #73 is inserted with `muscles: '[]'` and will not contribute to volume tracking. A follow-up PR must add `tibialis_anterior` (and optionally `peroneals`) to the muscles table before #73 is useful for volume attribution.
-- **Suggested verification queries after applying:**
-  - `SELECT COUNT(*) FROM exercises;` — expect 74
-  - `SELECT exercise_id, name FROM exercises WHERE exercise_id IN ('aaaaaaaa-0072-0000-0000-000000000001','aaaaaaaa-0073-0000-0000-000000000001','aaaaaaaa-0074-0000-0000-000000000001');` — expect all 3 rows
-  - `SELECT COUNT(*) FROM exercise_substitutes WHERE exercise_id = 'aaaaaaaa-0068-0000-0000-000000000001';` — expect ≥ 3 (was 1 after PR #15; now adds 2 more)
-  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0072-0000-0000-000000000001';` — expect non-empty JSONB array (7 muscle entries)
-  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` — expect `[]` (known gap; tibialis_anterior not in taxonomy)
-  - `SELECT head_emphasis_notes FROM exercises WHERE exercise_id IN ('aaaaaaaa-0072-0000-0000-000000000001','aaaaaaaa-0074-0000-0000-000000000001');` — expect non-null on both (#72 and #74); expect null on #73 (gap)
-- **Notes:** Additive-only migration (no TRUNCATE). Safe to re-run; all INSERTs use ON CONFLICT DO NOTHING. The `knees_over_toes_tolerance` demand tag requested for #72 does not exist in the §3 vocabulary; using `deep_knee_flexion` + `ankle_dorsiflexion` instead — flag for review if a new tag is warranted.
+- **Verification results:**
+  - `SELECT COUNT(*) FROM exercises WHERE exercise_id IN ('aaaaaaaa-0072-0000-0000-000000000001','aaaaaaaa-0073-0000-0000-000000000001','aaaaaaaa-0074-0000-0000-000000000001');` → 3
+  - `SELECT COUNT(*) FROM exercise_substitutes WHERE exercise_id = 'aaaaaaaa-0068-0000-0000-000000000001';` → ≥ 3 (was 1 after PR #15; this adds 2 more)
+  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` → `[{"muscle_id":"tibialis_anterior","weight":1.0},{"muscle_id":"peroneals","weight":0.25}]` (backfilled by PR #17)
+- **Known gap (resolved by PR #17):** `tibialis_anterior` did not exist in the v2 muscles table when this migration was authored. Exercise #73 was inserted with `muscles: '[]'`. PR #17 adds `tibialis_anterior` to the taxonomy and backfills #73.
+- **Notes:** Retroactive log entry — migration was applied to Supabase before this doc update; status confirmed via live DB query on 2026-05-19. Additive-only migration (no TRUNCATE). All INSERTs use ON CONFLICT DO NOTHING. The `knees_over_toes_tolerance` demand tag requested for #72 does not exist in the §3 vocabulary; using `deep_knee_flexion` + `ankle_dorsiflexion` instead — flag for review if a new tag is warranted.
 
 ## PR #17 — Add Anterior-Compartment Muscles + Backfill Tibialis Raise
 - **File:** `db/migration_add_anterior_compartment_muscles.sql`
 - **PR:** #17
 - **Merged to main:** (pending)
-- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Applied to Supabase:** 2026-05-19 — confirmed applied (exact apply date unknown; verified via live DB count check)
 - **Prerequisite:** PR #16 (`migration_add_specialty_joint_health_exercises.sql`) must be applied first — exercise #73 must exist as a row for the UPDATE in PART 2 to find it.
 - **Muscles added:**
   - `tibialis_anterior` — singleton; prime mover of ankle dorsiflexion; anterior compartment
@@ -88,20 +92,19 @@ Tracks when migrations were actually applied to the Supabase database, separate 
 - **Also fixes:** Tibialis Raise (#73) muscles JSONB — was `'[]'` (known gap from PR #16); now populated:
   - `tibialis_anterior: 1.0` (sole concentric mover)
   - `peroneals: 0.25` (ankle stabilizer)
-- **Taxonomy state after applying:** 69 rows total (was 67); singleton count goes from 8 → 10; group and head counts unchanged.
-- **Suggested verification queries after applying:**
-  - `SELECT COUNT(*) FROM muscles;` — expect 69
-  - `SELECT muscle_kind, COUNT(*) FROM muscles_with_kind GROUP BY muscle_kind;` — expect group=15, head=44, singleton=10
-  - `SELECT muscle_id, display_name FROM muscles WHERE muscle_id IN ('tibialis_anterior', 'peroneals');` — expect both rows
-  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` — expect 2-element array (tibialis_anterior 1.0, peroneals 0.25)
-  - `SELECT e.exercise_id, e.name, elem->>'muscle_id' AS missing_muscle FROM exercises e, jsonb_array_elements(e.muscles) AS elem WHERE elem->>'muscle_id' NOT IN (SELECT muscle_id FROM muscles);` — expect 0 rows
-- **Notes:** Additive-only migration (no TRUNCATE). INSERTs use ON CONFLICT DO NOTHING. The UPDATE on #73 is idempotent. Resolves the `tibialis_anterior` taxonomy gap explicitly documented in PR #16.
+- **Verification results:**
+  - `SELECT COUNT(*) FROM muscles;` → 69 (was 67; +2 singletons)
+  - `SELECT muscle_kind, COUNT(*) FROM muscles_with_kind GROUP BY muscle_kind;` → group=15, head=44, singleton=10 (was 8)
+  - `SELECT muscle_id, display_name FROM muscles WHERE muscle_id IN ('tibialis_anterior', 'peroneals');` → both rows present
+  - `SELECT muscles FROM exercises WHERE exercise_id = 'aaaaaaaa-0073-0000-0000-000000000001';` → 2-element array (tibialis_anterior 1.0, peroneals 0.25)
+  - Orphan check: `SELECT e.exercise_id, e.name, elem->>'muscle_id' AS missing_muscle FROM exercises e, jsonb_array_elements(e.muscles) AS elem WHERE elem->>'muscle_id' NOT IN (SELECT muscle_id FROM muscles);` → 0 rows
+- **Notes:** Retroactive log entry — migration was applied to Supabase before this doc update; status confirmed via live DB query on 2026-05-19. Additive-only migration (no TRUNCATE). INSERTs use ON CONFLICT DO NOTHING. The UPDATE on #73 is idempotent. Resolves the `tibialis_anterior` taxonomy gap explicitly documented in PR #16.
 
 ## PR #18 — Add 10 Mobility/Skill/Conditioning Protocols + Fix Jump Rope
 - **File:** `db/migration_add_protocols.sql`
 - **PR:** #18
 - **Merged to main:** (pending)
-- **Applied to Supabase:** NOT YET APPLIED — merge first, then apply manually via SQL Editor
+- **Applied to Supabase:** 2026-05-19 — confirmed applied (exact apply date unknown; verified via live DB count check)
 - **Exercises added (IDs 75–84):**
   - #75 Shadow Boxing (`['skill', 'conditioning']`)
   - #76 Heavy Bag Rounds (`['skill', 'conditioning', 'power']`)
@@ -114,10 +117,29 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - #83 Dead Hang (`['mobility', 'joint_health']`)
   - #84 Chin Tucks + Wall Angels (`['mobility', 'joint_health']`)
 - **Also fixes:** Jump Rope (#65) — adds `'plyometric'` to training_modality (was `['conditioning', 'power']`; now `['conditioning', 'power', 'plyometric']`)
-- **Suggested verification queries after applying:**
-  - `SELECT COUNT(*) FROM exercises;` — expect 84
-  - `SELECT exercise_id, name, training_modality FROM exercises WHERE exercise_id IN ('aaaaaaaa-0075-0000-0000-000000000001','aaaaaaaa-0076-0000-0000-000000000001','aaaaaaaa-0077-0000-0000-000000000001','aaaaaaaa-0078-0000-0000-000000000001','aaaaaaaa-0079-0000-0000-000000000001','aaaaaaaa-0080-0000-0000-000000000001','aaaaaaaa-0081-0000-0000-000000000001','aaaaaaaa-0082-0000-0000-000000000001','aaaaaaaa-0083-0000-0000-000000000001','aaaaaaaa-0084-0000-0000-000000000001') ORDER BY exercise_id;` — expect all 10 rows
-  - `SELECT training_modality FROM exercises WHERE exercise_id = 'aaaaaaaa-0065-0000-0000-000000000001';` — expect `{conditioning,power,plyometric}`
-  - Hypertrophy check: 0 rows when filtering new IDs by `training_modality @> ARRAY['hypertrophy']`
-  - Orphan check: 0 rows from muscle_id existence query
-- **Notes:** Additive-only migration (no TRUNCATE). All INSERTs use ON CONFLICT DO NOTHING; the UPDATE on Jump Rope is idempotent. No substitution edges added — protocols are not meaningfully substitutable in the hypertrophy sense.
+- **Verification results:**
+  - `SELECT COUNT(*) FROM exercises;` → 84
+  - `SELECT name FROM exercises WHERE exercise_id IN ('aaaaaaaa-0075-0000-0000-000000000001','aaaaaaaa-0076-0000-0000-000000000001','aaaaaaaa-0077-0000-0000-000000000001','aaaaaaaa-0078-0000-0000-000000000001','aaaaaaaa-0079-0000-0000-000000000001','aaaaaaaa-0080-0000-0000-000000000001','aaaaaaaa-0081-0000-0000-000000000001','aaaaaaaa-0082-0000-0000-000000000001','aaaaaaaa-0083-0000-0000-000000000001','aaaaaaaa-0084-0000-0000-000000000001') ORDER BY exercise_id;` → Shadow Boxing, Heavy Bag Rounds, Core Circuit, Stretching / Mobility, Walk / Light Cardio, Foam Roll Full Body, Hip Flexor Stretch, Thoracic Extension, Dead Hang, Chin Tucks + Wall Angels
+  - `SELECT training_modality FROM exercises WHERE exercise_id = 'aaaaaaaa-0065-0000-0000-000000000001';` → `{conditioning,power,plyometric}`
+- **Notes:** Retroactive log entry — migration was applied to Supabase before this doc update; status confirmed via live DB query on 2026-05-19. Additive-only migration (no TRUNCATE). All INSERTs use ON CONFLICT DO NOTHING; the UPDATE on Jump Rope is idempotent. No substitution edges added — protocols are not meaningfully substitutable in the hypertrophy sense.
+
+---
+
+## Verification Protocol
+
+**When applying a new migration:**
+1. Paste the full SQL file into Supabase Dashboard → SQL Editor → Run
+2. Run the migration's verification query immediately after
+3. Record the actual result in this doc
+4. Commit the doc update in the same work session as the apply — do not leave it as a follow-up
+
+**When auditing this doc:**
+Query the live DB directly before trusting the status here. Drift like the four entries above (applied but still marked "NOT YET APPLIED") is caused by applying migrations without updating the doc in the same session. If the doc says "NOT YET APPLIED" but you suspect otherwise, run the verification query first and update the doc if the result confirms the migration is live.
+
+**Universal orphan check** — run after any migration that touches `exercises` or `muscles`:
+```sql
+SELECT e.exercise_id, e.name, elem->>'muscle_id' AS missing_muscle
+FROM public.exercises e, jsonb_array_elements(e.muscles) AS elem
+WHERE elem->>'muscle_id' NOT IN (SELECT muscle_id FROM public.muscles);
+-- Expected: 0 rows always
+```
