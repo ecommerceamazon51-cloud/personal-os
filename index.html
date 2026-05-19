@@ -141,6 +141,7 @@ var MUSCLE_TARGETS={
 //   neck → Back        (neck training grouped with traps in this UI)
 //   serratus_anterior → Back (scapular retractor; functionally back)
 var MUSCLE_HEAD_TO_GROUP={
+  // v2 taxonomy head IDs (used by all seeded exercises)
   pectorals:"Chest",pectorals_clavicular:"Chest",pectorals_sternal:"Chest",pectorals_abdominal:"Chest",
   lats:"Back",lats_upper:"Back",lats_lower:"Back",
   traps:"Back",traps_upper:"Back",traps_middle:"Back",traps_lower:"Back",
@@ -162,7 +163,13 @@ var MUSCLE_HEAD_TO_GROUP={
   calves:"Calves",calves_gastrocnemius:"Calves",calves_soleus:"Calves",
   tibialis_anterior:"Calves",peroneals:"Calves",
   rectus_abdominis:"Core",obliques:"Core",transverse_abdominis:"Core",
-  hip_flexors:"Core",hip_flexors_iliopsoas:"Core",hip_flexors_tfl:"Core",hip_flexors_sartorius:"Core"
+  hip_flexors:"Core",hip_flexors_iliopsoas:"Core",hip_flexors_tfl:"Core",hip_flexors_sartorius:"Core",
+  // Flat IDs from the muscles table — covers exercises seeded before the v2 taxonomy reseed.
+  // Without these, getMuscleGroupsForExercise returns [] for any exercise using a flat ID,
+  // making the muscle group filter return zero results (root cause of Chest+dumbbell bug).
+  chest:"Chest",abs:"Core",lower_back:"Back",
+  rear_delts:"Shoulders",side_delts:"Shoulders",front_delts:"Shoulders",
+  abductors:"Glutes",traps_mid_lower:"Back"
 };
 
 // Per-head weekly volume targets. MEV=Minimum Effective Volume, MAV=Maximum Adaptive Volume,
@@ -664,6 +671,7 @@ function App(){
   var catExpandedArr=useState({});var catalogExpanded=catExpandedArr[0];var setCatalogExpanded=catExpandedArr[1];
   var catSheetArr=useState(null);var catalogSheet=catSheetArr[0];var setCatalogSheet=catSheetArr[1];
   var catSubCountsArr=useState({});var catalogSubCounts=catSubCountsArr[0];var setCatalogSubCounts=catSubCountsArr[1];
+  var catGroupsArr=useState({});var catalogGroupsOpen=catGroupsArr[0];var setCatalogGroupsOpen=catGroupsArr[1];
 
   function toast(msg,type){
     var id=Date.now()+Math.random();
@@ -1454,7 +1462,7 @@ function App(){
       {key:"domain",    label:"Domain",       options:["lifting","martial_arts","conditioning","mobility"]}
     ];
 
-    // Filter exercises
+    // Filter exercises (same AND logic as before)
     var filtered=allEx.filter(function(ex){
       if(catalogSearch){
         var q=catalogSearch.toLowerCase();
@@ -1478,7 +1486,33 @@ function App(){
     if(catalogFilters.modality.length>0)activeFilterCount++;
     if(catalogFilters.pattern.length>0)activeFilterCount++;
     if(catalogFilters.domain.length<4)activeFilterCount++;
-    var showClearAll=activeFilterCount>0||!!catalogSearch;
+    var filtersActive=activeFilterCount>0||!!catalogSearch;
+    var showClearAll=filtersActive;
+
+    // Group assignment: exercise belongs to every MUSCLE_TARGETS group it hits at weight>=0.5.
+    // Exercises with no qualifying muscle (e.g. empty-muscle conditioning drills) go to "Conditioning / Skill".
+    // Group order = MUSCLE_TARGETS key order, then "Conditioning / Skill" at the end.
+    var GROUP_NAMES=Object.keys(MUSCLE_TARGETS).concat(["Conditioning / Skill"]);
+    var groupMap={};
+    GROUP_NAMES.forEach(function(g){groupMap[g]=[];});
+    filtered.forEach(function(ex){
+      var gs=getMuscleGroupsForExercise(ex.muscles);
+      if(gs.length===0){
+        groupMap["Conditioning / Skill"].push(ex);
+      } else {
+        gs.forEach(function(g){if(groupMap[g])groupMap[g].push(ex);});
+      }
+    });
+
+    // When filters/search are active, auto-expand all non-empty groups.
+    // When inactive, use the user's manually set catalogGroupsOpen state.
+    function isGroupOpen(g){
+      if(filtersActive)return groupMap[g].length>0;
+      return !!catalogGroupsOpen[g];
+    }
+    function toggleGroup(g){
+      setCatalogGroupsOpen(function(p){var n=Object.assign({},p);n[g]=!p[g];return n;});
+    }
 
     function isChipActive(key){
       return key==="domain"?catalogFilters.domain.length<4:catalogFilters[key].length>0;
@@ -1501,9 +1535,9 @@ function App(){
       setCatalogSearch("");
     }
 
+    // Inner exercise card — lighter background than the group row to create nesting feel
     function renderCard(ex){
       var isExp=!!catalogExpanded[ex.exercise_id];
-      var primGroup=getPrimaryMuscleGroup(ex.muscles);
       var eqIcon=EQUIP_ICON[ex.equipment_primary]||"•";
       var modTag=(ex.training_modality||[])[0]||"";
       var fi=FATIGUE_INFO[ex.default_role]||{label:"—",color:C.dim,explanation:"—"};
@@ -1511,29 +1545,28 @@ function App(){
       var primaryMuscles=(ex.muscles||[]).filter(function(m){return m.weight>=0.5;});
       var hem=ex.head_emphasis_notes;
       var hemKeys=hem?Object.keys(hem):[];
-      return h("div",{key:ex.exercise_id,style:Object.assign({},S.card,{padding:"12px 14px"})},
+      return h("div",{key:ex.exercise_id,style:{background:C.bg,border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px",marginBottom:6}},
         h("div",{onClick:function(){setCatalogExpanded(function(p){var n=Object.assign({},p);n[ex.exercise_id]=!p[ex.exercise_id];return n;});},style:{cursor:"pointer"}},
-          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},
-            h("div",{style:{fontSize:13,fontWeight:700,color:C.white,flex:1,lineHeight:1.3,paddingRight:8}},ex.name),
-            h("span",{style:{fontSize:10,color:C.dim,flexShrink:0,marginTop:2}},isExp?"▲":"▼")
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}},
+            h("div",{style:{fontSize:12,fontWeight:600,color:C.white,flex:1,lineHeight:1.3,paddingRight:8}},ex.name),
+            h("span",{style:{fontSize:10,color:C.dim,flexShrink:0,marginTop:1}},isExp?"▲":"▼")
           ),
           h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
-            primGroup?h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.dark,color:C.grey,letterSpacing:0.5}},primGroup):null,
             h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.dark,color:C.grey}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," ")),
             modTag?h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.dark,color:C.grey}},modTag.replace(/_/g," ")):null,
             h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:fi.color+"22",color:fi.color,fontWeight:600}},fi.label)
           )
         ),
-        isExp?h("div",{style:{marginTop:12,borderTop:"1px solid "+C.border,paddingTop:10}},
-          ex.aliases&&ex.aliases.length>0?h("div",{style:{fontSize:10,color:C.dim,marginBottom:10}},ex.aliases.join(", ")):null,
-          primaryMuscles.length>0?h("div",{style:{marginBottom:10}},
+        isExp?h("div",{style:{marginTop:10,borderTop:"1px solid "+C.border,paddingTop:8}},
+          ex.aliases&&ex.aliases.length>0?h("div",{style:{fontSize:10,color:C.dim,marginBottom:8}},ex.aliases.join(", ")):null,
+          primaryMuscles.length>0?h("div",{style:{marginBottom:8}},
             h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"MUSCLES"),
             primaryMuscles.map(function(m,j){
               return h("div",{key:j,style:{fontSize:11,color:C.white,marginBottom:2}},
                 muscleIdToLabel(m.muscle_id)+" "+(m.weight===1.0?"— primary":"— secondary"));
             })
           ):null,
-          hemKeys.length>0?h("div",{style:{marginBottom:10}},
+          hemKeys.length>0?h("div",{style:{marginBottom:8}},
             h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"),
             hemKeys.map(function(k,j){
               return h("div",{key:j,style:{fontSize:11,color:C.white,marginBottom:2}},
@@ -1541,10 +1574,27 @@ function App(){
               );
             })
           ):null,
-          h("div",{style:{fontSize:11,color:C.dim,marginBottom:6}},fi.explanation),
+          h("div",{style:{fontSize:11,color:C.dim,marginBottom:4}},fi.explanation),
           h("div",{style:{fontSize:11,color:C.dim}},
             subCount>0?subCount+" substitute"+(subCount===1?"":"s")+" available":"No substitutes")
         ):null
+      );
+    }
+
+    // Group accordion row + its exercise cards
+    function renderGroup(g){
+      var exes=groupMap[g];
+      if(exes.length===0)return null;
+      var open=isGroupOpen(g);
+      return h("div",{key:g,style:Object.assign({},S.card,{padding:"12px 14px",marginBottom:8})},
+        h("div",{onClick:function(){toggleGroup(g);},style:{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",minHeight:20}},
+          h("div",{style:{fontSize:13,fontWeight:700,color:C.white}},g),
+          h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+            h("span",{style:{fontSize:11,color:C.dim}},exes.length),
+            h("span",{style:{fontSize:10,color:C.dim}},open?"▲":"▼")
+          )
+        ),
+        open?h("div",{style:{marginTop:10}},exes.map(renderCard)):null
       );
     }
 
@@ -1605,7 +1655,7 @@ function App(){
           h("div",{style:{fontSize:13,color:C.white,marginBottom:12}},"No exercises match these filters"),
           h("div",{onClick:clearAll,style:{fontSize:12,color:C.accent,cursor:"pointer"}},"Clear filters")
         )
-        :filtered.map(renderCard),
+        :GROUP_NAMES.map(renderGroup),
       catalogSheet?renderSheet():null
     );
   }
