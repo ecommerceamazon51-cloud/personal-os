@@ -380,7 +380,7 @@ function buildHistoryFromRows(wrows,crows){
 }
 
 function loadExerciseDB(){
-  sb.from("exercises").select("exercise_id,muscles").then(function(r){
+  sb.from("exercises").select("exercise_id,name,aliases,domain,movement_pattern_primary,movement_pattern_secondary,loading_type,muscles,head_emphasis_notes,equipment_primary,equipment_specific,training_modality,default_role,session_position,loaded_position,demands,verified").then(function(r){
     if(r.error||!r.data){console.warn("[muscle-rollup] exercises fetch failed, using hardcoded fallback",r.error);return;}
     var map={};
     r.data.forEach(function(row){map[row.exercise_id]=row;});
@@ -467,6 +467,46 @@ function BarChart(props){
   var migrated=LS.get("wlog-migrated-v2");
   if(!migrated){LS.keys().forEach(function(k){if(k.match(/^wlog-\d{4}-\d{2}-\d{2}$/))localStorage.removeItem(k);});LS.set("wlog-migrated-v2",true);}
 })();
+
+// ─── Catalog browser constants + helpers ────────────────────────────────────
+
+var EQUIP_ICON={
+  barbell:"🏋️",dumbbell:"💪",cable:"🔗",machine:"⚙️",bodyweight:"🤸",
+  kettlebell:"🔔",specialty_bar:"🏋️",plyo_box:"📦",sled:"🛷",bag:"🥊",
+  band:"➰",med_ball:"⚪",pads:"🥋",none:"•"
+};
+
+var FATIGUE_INFO={
+  main_compound:     {label:"high fatigue",    color:"#ef4444", explanation:"Main compound — high systemic fatigue cost"},
+  secondary_compound:{label:"moderate fatigue", color:"#fbbf24", explanation:"Secondary compound — moderate fatigue cost"},
+  accessory:         {label:"low fatigue",      color:"#555",    explanation:"Accessory — low fatigue cost"},
+  isolation:         {label:"low fatigue",      color:"#555",    explanation:"Isolation — minimal systemic fatigue"}
+};
+
+function muscleIdToLabel(id){
+  return id.split("_").map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(" ");
+}
+
+// Returns the flat UI group (MUSCLE_TARGETS key) with the highest summed weight
+// across the exercise's muscles array (only weight >= 0.5 entries count).
+function getPrimaryMuscleGroup(muscles){
+  var totals={};
+  (muscles||[]).forEach(function(m){
+    if(m.weight>=0.5){var g=MUSCLE_HEAD_TO_GROUP[m.muscle_id];if(g)totals[g]=(totals[g]||0)+m.weight;}
+  });
+  var best=null,bestVal=0;
+  Object.keys(totals).forEach(function(g){if(totals[g]>bestVal){bestVal=totals[g];best=g;}});
+  return best;
+}
+
+// Returns all flat UI groups that appear at weight >= 0.5 in the muscles array.
+function getMuscleGroupsForExercise(muscles){
+  var groups={};
+  (muscles||[]).forEach(function(m){
+    if(m.weight>=0.5){var g=MUSCLE_HEAD_TO_GROUP[m.muscle_id];if(g)groups[g]=true;}
+  });
+  return Object.keys(groups);
+}
 
 function AuthScreen(){
   var emailArr=useState("");var email=emailArr[0];var setEmail=emailArr[1];
@@ -619,6 +659,11 @@ function App(){
   var ghostFilledArr=useState({});var ghostFilled=ghostFilledArr[0];var setGhostFilled=ghostFilledArr[1];
   var notesDataArr=useState({});var notesData=notesDataArr[0];var setNotesData=notesDataArr[1];
   var openNotesArr=useState({});var openNotes=openNotesArr[0];var setOpenNotes=openNotesArr[1];
+  var catSearchArr=useState("");var catalogSearch=catSearchArr[0];var setCatalogSearch=catSearchArr[1];
+  var catFiltersArr=useState({muscle:[],equipment:[],modality:[],pattern:[],domain:["lifting","martial_arts","conditioning","mobility"]});var catalogFilters=catFiltersArr[0];var setCatalogFilters=catFiltersArr[1];
+  var catExpandedArr=useState({});var catalogExpanded=catExpandedArr[0];var setCatalogExpanded=catExpandedArr[1];
+  var catSheetArr=useState(null);var catalogSheet=catSheetArr[0];var setCatalogSheet=catSheetArr[1];
+  var catSubCountsArr=useState({});var catalogSubCounts=catSubCountsArr[0];var setCatalogSubCounts=catSubCountsArr[1];
 
   function toast(msg,type){
     var id=Date.now()+Math.random();
@@ -735,6 +780,16 @@ function App(){
       setBwLoading(false);
     }).catch(function(){setBwLoading(false);});
   },[historyTab,user]);
+
+  useEffect(function(){
+    if(!user||view!=="plan"||Object.keys(catalogSubCounts).length>0)return;
+    sb.from("exercise_substitutes").select("exercise_id").then(function(r){
+      if(!r.data)return;
+      var counts={};
+      r.data.forEach(function(row){counts[row.exercise_id]=(counts[row.exercise_id]||0)+1;});
+      setCatalogSubCounts(counts);
+    });
+  },[view,user]);
 
   var timerRemaining=timer?timer.remaining:-1;var timerActive=timer?timer.active:false;
   useEffect(function(){
@@ -1376,6 +1431,185 @@ function App(){
     );
   }
 
+  function PlanView(){
+    var allEx=gExerciseDB?Object.values(gExerciseDB):null;
+    if(!allEx)return h("div",{style:{textAlign:"center",padding:60,color:C.dim,fontSize:11,letterSpacing:2}},"LOADING CATALOG...");
+
+    // Derive available filter options from live data
+    var seenEq={};var availEquipment=[];
+    allEx.forEach(function(e){if(e.equipment_primary&&!seenEq[e.equipment_primary]){seenEq[e.equipment_primary]=true;availEquipment.push(e.equipment_primary);}});
+    availEquipment.sort();
+    var seenMod={};var availModality=[];
+    allEx.forEach(function(e){(e.training_modality||[]).forEach(function(m){if(!seenMod[m]){seenMod[m]=true;availModality.push(m);}});});
+    availModality.sort();
+    var seenPat={};var availPattern=[];
+    allEx.forEach(function(e){if(e.movement_pattern_primary&&!seenPat[e.movement_pattern_primary]){seenPat[e.movement_pattern_primary]=true;availPattern.push(e.movement_pattern_primary);}});
+    availPattern.sort();
+
+    var allFilterCats=[
+      {key:"muscle",    label:"Muscle Group", options:Object.keys(MUSCLE_TARGETS)},
+      {key:"equipment", label:"Equipment",    options:availEquipment},
+      {key:"modality",  label:"Modality",     options:availModality},
+      {key:"pattern",   label:"Pattern",      options:availPattern},
+      {key:"domain",    label:"Domain",       options:["lifting","martial_arts","conditioning","mobility"]}
+    ];
+
+    // Filter exercises
+    var filtered=allEx.filter(function(ex){
+      if(catalogSearch){
+        var q=catalogSearch.toLowerCase();
+        if(ex.name.toLowerCase().indexOf(q)<0&&!(ex.aliases||[]).some(function(a){return a.toLowerCase().indexOf(q)>=0;}))return false;
+      }
+      if(catalogFilters.muscle.length>0){
+        var exGroups=getMuscleGroupsForExercise(ex.muscles);
+        if(!catalogFilters.muscle.some(function(m){return exGroups.indexOf(m)>=0;}))return false;
+      }
+      if(catalogFilters.equipment.length>0&&catalogFilters.equipment.indexOf(ex.equipment_primary)<0)return false;
+      if(catalogFilters.modality.length>0&&!(ex.training_modality||[]).some(function(m){return catalogFilters.modality.indexOf(m)>=0;}))return false;
+      if(catalogFilters.pattern.length>0&&catalogFilters.pattern.indexOf(ex.movement_pattern_primary)<0)return false;
+      if(catalogFilters.domain.length<4&&catalogFilters.domain.indexOf(ex.domain)<0)return false;
+      return true;
+    });
+    filtered.sort(function(a,b){return a.name<b.name?-1:1;});
+
+    var activeFilterCount=0;
+    if(catalogFilters.muscle.length>0)activeFilterCount++;
+    if(catalogFilters.equipment.length>0)activeFilterCount++;
+    if(catalogFilters.modality.length>0)activeFilterCount++;
+    if(catalogFilters.pattern.length>0)activeFilterCount++;
+    if(catalogFilters.domain.length<4)activeFilterCount++;
+    var showClearAll=activeFilterCount>0||!!catalogSearch;
+
+    function isChipActive(key){
+      return key==="domain"?catalogFilters.domain.length<4:catalogFilters[key].length>0;
+    }
+    function chipLabel(cat){
+      if(cat.key==="domain")return catalogFilters.domain.length<4?"Domain ("+catalogFilters.domain.length+")":"Domain";
+      var n=catalogFilters[cat.key].length;
+      return n>0?(cat.label+" ("+n+")"):cat.label;
+    }
+    function toggleFilterVal(key,val){
+      setCatalogFilters(function(prev){
+        var arr=prev[key]||[];
+        var newArr=arr.indexOf(val)>=0?arr.filter(function(v){return v!==val;}):arr.concat(val);
+        var upd={};upd[key]=newArr;
+        return Object.assign({},prev,upd);
+      });
+    }
+    function clearAll(){
+      setCatalogFilters({muscle:[],equipment:[],modality:[],pattern:[],domain:["lifting","martial_arts","conditioning","mobility"]});
+      setCatalogSearch("");
+    }
+
+    function renderCard(ex){
+      var isExp=!!catalogExpanded[ex.exercise_id];
+      var primGroup=getPrimaryMuscleGroup(ex.muscles);
+      var eqIcon=EQUIP_ICON[ex.equipment_primary]||"•";
+      var modTag=(ex.training_modality||[])[0]||"";
+      var fi=FATIGUE_INFO[ex.default_role]||{label:"—",color:C.dim,explanation:"—"};
+      var subCount=catalogSubCounts[ex.exercise_id]||0;
+      var primaryMuscles=(ex.muscles||[]).filter(function(m){return m.weight>=0.5;});
+      var hem=ex.head_emphasis_notes;
+      var hemKeys=hem?Object.keys(hem):[];
+      return h("div",{key:ex.exercise_id,style:Object.assign({},S.card,{padding:"12px 14px"})},
+        h("div",{onClick:function(){setCatalogExpanded(function(p){var n=Object.assign({},p);n[ex.exercise_id]=!p[ex.exercise_id];return n;});},style:{cursor:"pointer"}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}},
+            h("div",{style:{fontSize:13,fontWeight:700,color:C.white,flex:1,lineHeight:1.3,paddingRight:8}},ex.name),
+            h("span",{style:{fontSize:10,color:C.dim,flexShrink:0,marginTop:2}},isExp?"▲":"▼")
+          ),
+          h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+            primGroup?h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.dark,color:C.grey,letterSpacing:0.5}},primGroup):null,
+            h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.dark,color:C.grey}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," ")),
+            modTag?h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.dark,color:C.grey}},modTag.replace(/_/g," ")):null,
+            h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:fi.color+"22",color:fi.color,fontWeight:600}},fi.label)
+          )
+        ),
+        isExp?h("div",{style:{marginTop:12,borderTop:"1px solid "+C.border,paddingTop:10}},
+          ex.aliases&&ex.aliases.length>0?h("div",{style:{fontSize:10,color:C.dim,marginBottom:10}},ex.aliases.join(", ")):null,
+          primaryMuscles.length>0?h("div",{style:{marginBottom:10}},
+            h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"MUSCLES"),
+            primaryMuscles.map(function(m,j){
+              return h("div",{key:j,style:{fontSize:11,color:C.white,marginBottom:2}},
+                muscleIdToLabel(m.muscle_id)+" "+(m.weight===1.0?"— primary":"— secondary"));
+            })
+          ):null,
+          hemKeys.length>0?h("div",{style:{marginBottom:10}},
+            h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"),
+            hemKeys.map(function(k,j){
+              return h("div",{key:j,style:{fontSize:11,color:C.white,marginBottom:2}},
+                h("span",{style:{color:C.grey}},muscleIdToLabel(k)+": "),hem[k]
+              );
+            })
+          ):null,
+          h("div",{style:{fontSize:11,color:C.dim,marginBottom:6}},fi.explanation),
+          h("div",{style:{fontSize:11,color:C.dim}},
+            subCount>0?subCount+" substitute"+(subCount===1?"":"s")+" available":"No substitutes")
+        ):null
+      );
+    }
+
+    function renderSheet(){
+      var cats=catalogSheet==="all"?allFilterCats:allFilterCats.filter(function(c){return c.key===catalogSheet;});
+      return h("div",{style:{position:"fixed",inset:0,zIndex:200}},
+        h("div",{onClick:function(){setCatalogSheet(null);},style:{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)"}}),
+        h("div",{style:{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:C.card,borderTop:"2px solid "+C.border,borderRadius:"12px 12px 0 0",padding:"16px 16px 32px",maxHeight:"72vh",overflowY:"auto"}},
+          cats.map(function(cat,ci){
+            return h("div",{key:cat.key,style:{marginBottom:ci<cats.length-1?20:0}},
+              h("div",{style:{fontSize:10,fontWeight:700,color:C.white,letterSpacing:2,marginBottom:8}},cat.label.toUpperCase()),
+              cat.options.map(function(opt,oi){
+                var checked=cat.key==="domain"
+                  ?catalogFilters.domain.indexOf(opt)>=0
+                  :(catalogFilters[cat.key]||[]).indexOf(opt)>=0;
+                return h("div",{key:oi,onClick:function(){toggleFilterVal(cat.key,opt);},
+                  style:{display:"flex",alignItems:"center",gap:10,padding:"10px 0",cursor:"pointer",borderBottom:"1px solid "+C.border,minHeight:44}},
+                  h("div",{style:{width:18,height:18,border:"2px solid "+(checked?C.accent:C.dim),borderRadius:3,background:checked?C.accent:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}},
+                    checked?h("span",{style:{fontSize:10,color:C.bg,fontWeight:700,lineHeight:1}},"✓"):null
+                  ),
+                  h("span",{style:{fontSize:12,color:C.white}},opt.replace(/_/g," "))
+                );
+              })
+            );
+          }),
+          h("div",{onClick:function(){setCatalogSheet(null);},style:{marginTop:16,padding:"12px",background:C.accent,color:C.bg,fontWeight:700,fontSize:13,textAlign:"center",borderRadius:6,cursor:"pointer",letterSpacing:2}},"DONE")
+        )
+      );
+    }
+
+    return h("div",null,
+      h("div",{style:S.header},
+        h("div",{style:S.title},"Exercise Database"),
+        h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:4}},
+          h("div",{style:S.h1},"Exercise Catalog"),
+          h("div",{style:{fontSize:11,color:C.dim}},filtered.length+" exercises")
+        )
+      ),
+      h("input",{type:"text",placeholder:"Search by name or alias…",value:catalogSearch,
+        onChange:function(e){setCatalogSearch(e.target.value);},
+        style:Object.assign({},S.input,{width:"100%",padding:"10px 12px",fontSize:13,marginBottom:10})}),
+      h("div",{style:{marginBottom:12}},
+        h("div",{"data-hscroll":"1",style:{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,alignItems:"center"}},
+          activeFilterCount>=2
+            ?h("div",{onClick:function(){setCatalogSheet("all");},style:{padding:"6px 10px",borderRadius:20,fontSize:10,fontWeight:700,color:C.bg,background:C.accent,border:"1px solid "+C.accent,cursor:"pointer",letterSpacing:1,whiteSpace:"nowrap",flexShrink:0}},"Filters ("+activeFilterCount+")")
+            :allFilterCats.map(function(cat){
+              var active=isChipActive(cat.key);
+              return h("div",{key:cat.key,onClick:function(){setCatalogSheet(cat.key);},
+                style:{padding:"6px 10px",borderRadius:20,fontSize:10,fontWeight:active?700:400,color:active?C.bg:C.grey,background:active?C.accent:"transparent",border:"1px solid "+(active?C.accent:C.border),cursor:"pointer",letterSpacing:1,whiteSpace:"nowrap",flexShrink:0}},
+                chipLabel(cat));
+            }),
+          showClearAll?h("div",{onClick:clearAll,style:{padding:"6px 10px",fontSize:10,color:C.accent,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}},"Clear all"):null
+        )
+      ),
+      filtered.length===0
+        ?h("div",{style:Object.assign({},S.card,{textAlign:"center",padding:32})},
+          h("div",{style:{fontSize:24,marginBottom:8}},"🔍"),
+          h("div",{style:{fontSize:13,color:C.white,marginBottom:12}},"No exercises match these filters"),
+          h("div",{onClick:clearAll,style:{fontSize:12,color:C.accent,cursor:"pointer"}},"Clear filters")
+        )
+        :filtered.map(renderCard),
+      catalogSheet?renderSheet():null
+    );
+  }
+
   function SystemsView(){
     return h("div",null,
       h("div",{style:S.header},h("div",{style:S.title},"Reference"),h("div",{style:S.h1},"All Systems")),
@@ -1575,7 +1809,7 @@ function App(){
   if(authState==="unauthed")return h(AuthScreen);
   if(authState==="onboarding")return h(OnboardingWizard,{user:user,onComplete:function(p){setProfile(p);setAuthState("authed");}});
 
-  var tabs=[{id:"dashboard",icon:"📋",l:"Today"},{id:"workout",icon:"🏋️",l:"Workout"},{id:"history",icon:"📊",l:"History"},{id:"nutrition",icon:"🍽️",l:"Nutrition"},{id:"sections",icon:"◆",l:"Systems"}];
+  var tabs=[{id:"dashboard",icon:"📋",l:"Today"},{id:"workout",icon:"🏋️",l:"Workout"},{id:"plan",icon:"🗂️",l:"Plan"},{id:"history",icon:"📊",l:"History"},{id:"nutrition",icon:"🍽️",l:"Nutrition"},{id:"sections",icon:"◆",l:"Systems"}];
 
   return h("div",{style:{background:C.bg,minHeight:"100vh"},onTouchStart:handleTouchStart,onTouchMove:handleTouchMove,onTouchEnd:handleTouchEnd},
     h("div",{style:{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",width:"calc(100% - 32px)",maxWidth:448,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",gap:8,pointerEvents:"none"}},
@@ -1587,6 +1821,7 @@ function App(){
       h("div",{key:"v-"+view,className:"fade-in"},
         view==="dashboard"?Dashboard():
         view==="workout"?WorkoutView():
+        view==="plan"?PlanView():
         view==="history"?HistoryView():
         view==="nutrition"?NutritionView():
         view==="sections"?SystemsView():null
