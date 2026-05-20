@@ -871,13 +871,13 @@ function App(){
 
   useEffect(function(){
     if(!user||view!=="plan"||Object.keys(catalogSubCounts).length>0)return;
-    sb.from("exercise_substitutes").select("exercise_id,substitute_id,substitute_reason,similarity_score").then(function(r){
+    sb.from("exercise_substitutes").select("exercise_id,substitute_id,reason,similarity_score").then(function(r){
       if(!r.data)return;
       var counts={};var subs={};
       r.data.forEach(function(row){
         counts[row.exercise_id]=(counts[row.exercise_id]||0)+1;
         if(!subs[row.exercise_id])subs[row.exercise_id]=[];
-        subs[row.exercise_id].push({substitute_id:row.substitute_id,substitute_reason:row.substitute_reason,similarity_score:row.similarity_score});
+        subs[row.exercise_id].push({substitute_id:row.substitute_id,substitute_reason:row.reason,similarity_score:row.similarity_score});
       });
       gSubstitutes=subs;
       setCatalogSubCounts(counts);
