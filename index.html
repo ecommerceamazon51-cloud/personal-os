@@ -1281,10 +1281,11 @@ function App(){
         )
       );})():null,
       activeWorkout.exercises.map(function(ex,eIdx){
-        var setCount=sc(ex);var pr=history&&history.prs[ex.name];
+        var setCount=sc(ex);
         var ghostEx=ghost&&!isPast&&ghost.exercises[eIdx];
         var swappedId=!isPast?swappedExercises[ex.exercise_id]:null;
         var displayEx=swappedId&&gExerciseDB&&gExerciseDB[swappedId]?gExerciseDB[swappedId]:ex;
+        var pr=history&&history.prs[displayEx.name];
         var hasAnySetLogged=false;
         if(!isPast){for(var si=0;si<setCount;si++){if(wlog[eIdx+"-"+si+"-done"]||wlog[eIdx+"-"+si+"-w"]||wlog[eIdx+"-"+si+"-r"]){hasAnySetLogged=true;break;}}}
         var deloadWeight=null;
@@ -1297,7 +1298,10 @@ function App(){
             h("div",{style:{flex:1}},
               h("div",{style:{fontSize:13,fontWeight:600,color:C.white}},displayEx.name,
                 swappedId?h("span",{style:{fontSize:9,color:C.blue,marginLeft:6,fontWeight:400}},"(swapped)"):null),
-              h("div",{style:{fontSize:11,color:C.dim,marginTop:2}},ex.sets+"x"+ex.reps+" — "+ex.note)
+              h("div",{style:{fontSize:11,color:C.dim,marginTop:2}},
+                swappedId
+                  ?ex.sets+"x"+ex.reps+" — prescription from "+ex.name
+                  :ex.sets+"x"+ex.reps+" — "+ex.note)
             ),
             h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0,marginLeft:8}},
               !isPast?h("div",{onClick:function(){toggleNote(ex.name);},style:{fontSize:9,letterSpacing:1,color:notesData[ex.name]?C.grey:C.dim,cursor:"pointer",padding:"2px 7px",border:"1px solid "+(notesData[ex.name]?C.border:C.dark),borderRadius:3,userSelect:"none"}},openNotes[ex.name]?"CLOSE":"NOTES"):null,
