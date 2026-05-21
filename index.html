@@ -1696,9 +1696,6 @@ function App(){
       var cur=builderSessions.length;
       if(newN===cur)return;
       if(newN<cur){
-        var toRemove=builderSessions.slice(newN);
-        var hasEx=toRemove.some(function(s){return s.exercises.length>0;});
-        if(hasEx){var removed=toRemove.reduce(function(a,s){return a+s.exercises.length;},0);if(!window.confirm("Sessions "+(newN+1)+" to "+cur+" will be removed ("+removed+" exercises). Continue?"))return;}
         setBuilderSessions(function(p){return p.slice(0,newN);});
       } else {
         var toAdd=[];for(var i=cur;i<newN;i++)toAdd.push(makeBuilderSession(i));
@@ -1775,7 +1772,7 @@ function App(){
             builderSessions.forEach(function(sess,si){
               var sh={};
               sess.exercises.forEach(function(se){var row=gExerciseDB&&gExerciseDB[se.exercise_id];if(!row)return;(row.muscles||[]).forEach(function(m){if(m.weight>=0.5&&MUSCLE_HEAD_TARGETS[m.muscle_id])sh[m.muscle_id]=(sh[m.muscle_id]||0)+se.sets;});});
-              Object.keys(sh).forEach(function(h){if(sh[h]>=8){var t=MUSCLE_HEAD_TARGETS[h];warns.push(h("div",{key:h+si,style:{fontSize:9,color:C.orange,marginTop:4}},"⚠️ Sess "+(si+1)+": "+(t?t.display:h)+" — "+sh[h]+" sets in one session"));}});
+              Object.keys(sh).forEach(function(headId){if(sh[headId]>=8){var t=MUSCLE_HEAD_TARGETS[headId];warns.push(h("div",{key:headId+si,style:{fontSize:9,color:C.orange,marginTop:4}},"⚠️ Sess "+(si+1)+": "+(t?t.display:headId)+" — "+sh[headId]+" sets in one session"));}});
             });
             return warns.length?h("div",{style:{marginTop:8}},warns):null;
           })()
@@ -2065,7 +2062,7 @@ function App(){
             h("div",{onClick:function(){
               if(planMode==="catalog"){
                 var inferredGoal="hypertrophy";
-                if(profile&&profile.goals){var g=profile.goals.toLowerCase();if(g.includes("strength"))inferredGoal="strength";else if(g.includes("hybrid"))inferredGoal="hybrid";}
+                if(profile&&profile.goals&&profile.goals.length){var gs=profile.goals;var hasStrength=gs.indexOf("strength")>=0;var hasMuscle=gs.indexOf("muscle")>=0;if(hasStrength&&!hasMuscle)inferredGoal="strength";else if(hasMuscle&&!hasStrength)inferredGoal="hypertrophy";else inferredGoal="hybrid";}
                 setBuilderConfig(function(prev){return Object.assign({},prev,{goal:inferredGoal});});
                 if(builderSessions.length===0){var init=[];for(var bi=0;bi<builderConfig.sessionsPerWeek;bi++)init.push(makeBuilderSession(bi));setBuilderSessions(init);}
                 setPlanMode("builder");
