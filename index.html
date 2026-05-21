@@ -527,6 +527,15 @@ function getMuscleGroupsForExercise(muscles){
   });
   return Object.keys(groups);
 }
+// Returns groups where the exercise has a primary contribution (weight >= 0.75).
+// Used by the builder focus filter to avoid stabilizers leaking into focus-filtered results.
+function getPrimaryMuscleGroupsForExercise(muscles){
+  var groups={};
+  (muscles||[]).forEach(function(m){
+    if(m.weight>=0.75){var g=MUSCLE_HEAD_TO_GROUP[m.muscle_id];if(g)groups[g]=true;}
+  });
+  return Object.keys(groups);
+}
 
 function AuthScreen(){
   var emailArr=useState("");var email=emailArr[0];var setEmail=emailArr[1];
@@ -1846,7 +1855,7 @@ function App(){
       }
       var overlayEx=(allEx||[]).filter(function(ex){
         if(catalogSearch){var q=catalogSearch.toLowerCase();if(ex.name.toLowerCase().indexOf(q)<0&&!(ex.aliases||[]).some(function(a){return a.toLowerCase().indexOf(q)>=0;}))return false;}
-        if(focusMuscles){var exGroups=getMuscleGroupsForExercise(ex.muscles);if(!focusMuscles.some(function(m){return exGroups.indexOf(m)>=0;}))return false;}
+        if(focusMuscles){var exGroups=getPrimaryMuscleGroupsForExercise(ex.muscles);if(!focusMuscles.some(function(m){return exGroups.indexOf(m)>=0;}))return false;}
         return true;
       }).sort(function(a,b){return a.name<b.name?-1:1;});
       var closeFn=function(){setBuilderAddingTo(null);setBuilderOverlayShowAll(false);};
