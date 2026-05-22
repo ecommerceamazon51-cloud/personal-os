@@ -501,6 +501,7 @@ var SUBSTITUTE_REASON_LABEL={
 
 var BUILDER_FOCUS_LABELS={none:"No Focus",push:"Push",pull:"Pull",legs:"Legs",upper:"Upper Body",lower:"Lower Body",full:"Full Body",custom:"Custom"};
 var BUILDER_FOCUS_MUSCLES={push:["Chest","Shoulders","Triceps"],pull:["Back","Biceps"],legs:["Quads","Hamstrings","Glutes","Calves"],upper:["Chest","Back","Shoulders","Biceps","Triceps"],lower:["Quads","Hamstrings","Glutes","Calves"],full:null,none:null,custom:null};
+var BUILDER_FOCUS_PATTERN_EXCLUDE={push:["hinge","squat","lunge","carry"],pull:["hinge","squat","lunge","carry"],upper:["hinge","squat","lunge","carry"],legs:[],lower:[],full:[],none:[],custom:["hinge","squat","lunge","carry"]};
 var BUILDER_ROLE_DEFAULTS={main_compound:{sets:4,reps:"5-8"},secondary_compound:{sets:3,reps:"8-10"},accessory:{sets:3,reps:"10-12"},isolation:{sets:3,reps:"12-15"}};
 
 function muscleIdToLabel(id){
@@ -1855,7 +1856,14 @@ function App(){
       }
       var overlayEx=(allEx||[]).filter(function(ex){
         if(catalogSearch){var q=catalogSearch.toLowerCase();if(ex.name.toLowerCase().indexOf(q)<0&&!(ex.aliases||[]).some(function(a){return a.toLowerCase().indexOf(q)>=0;}))return false;}
-        if(focusMuscles){var exGroups=getPrimaryMuscleGroupsForExercise(ex.muscles);if(!focusMuscles.some(function(m){return exGroups.indexOf(m)>=0;}))return false;}
+        if(focusMuscles){
+          var exGroups=getPrimaryMuscleGroupsForExercise(ex.muscles);
+          if(!focusMuscles.some(function(m){return exGroups.indexOf(m)>=0;}))return false;
+        }
+        if(!builderOverlayShowAll){
+          var excludePatterns=BUILDER_FOCUS_PATTERN_EXCLUDE[sessRef.focus]||[];
+          if(excludePatterns.length>0&&excludePatterns.indexOf(ex.movement_pattern_primary)>=0)return false;
+        }
         return true;
       }).sort(function(a,b){return a.name<b.name?-1:1;});
       var closeFn=function(){setBuilderAddingTo(null);setBuilderOverlayShowAll(false);};
