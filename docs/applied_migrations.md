@@ -126,8 +126,8 @@ Tracks when migrations were actually applied to the Supabase database, separate 
 ## PR #28 — Tier 1 Catalog Expansion
 - **File:** `migrations/2026-05-22_pr28_catalog_expansion.sql`
 - **PR:** #28
-- **Merged to main:** (pending)
-- **Applied to Supabase:** Pending — run in Supabase Dashboard after merge
+- **Merged to main:** 2026-05-22
+- **Applied to Supabase:** 2026-05-22
 - **Description:** Tier 1 catalog expansion: 2 new movement_pattern enum values (spinal_extension, scapular_elevation); 19 new exercises filling coverage gaps in lateral delts, lower chest, upper/lower traps, soleus, and spinal erectors.
 - **Pass 1 / Pass 2 note:** ALTER TYPE statements (Pass 1) must be pasted and run alone, committed, before the INSERT block (Pass 2) is run. Paste them as two separate SQL Editor executions — Postgres error 25001 prevents ALTER TYPE inside a transaction.
 - **Exercises added (IDs 1001–1019):**
@@ -144,7 +144,7 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - #1011 Prone Y-Raise (lower traps)
   - #1012 Wall Slide (lower traps)
   - #1013 Face Pull (High Angle) (lower traps)
-  - #1014 Seated Calf Raise (soleus)
+  - #1014 Seated Calf Raise (soleus) — **skipped**: duplicate of existing exercise aaaaaaaa-0044-... blocked by `exercises_name_key` UNIQUE constraint via `ON CONFLICT DO NOTHING`. Accepted — existing row already covers soleus at weight 1.0 primary.
   - #1015 Leg Press Calf Raise (soleus / gastroc)
   - #1016 Back Extension (spinal erectors)
   - #1017 Reverse Hyper (spinal erectors)
@@ -154,7 +154,7 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - `SELECT COUNT(*) FROM exercises WHERE exercise_id IN ('aaaaaaaa-1001-0000-0000-000000000001',...,'aaaaaaaa-1019-0000-0000-000000000001');` → 19
   - `SELECT enumlabel FROM pg_enum WHERE enumtypid = 'movement_pattern'::regtype AND enumlabel IN ('spinal_extension','scapular_elevation');` → 2 rows
   - Universal orphan check → 0 rows (see template below)
-- **Status:** Pending — run in Supabase Dashboard after merge
+- **Status:** Applied 2026-05-22 — 18 of 19 exercises landed. Exercise #1014 (Seated Calf Raise) was a duplicate of existing exercise aaaaaaaa-0044-... and was correctly blocked by the `exercises_name_key` UNIQUE constraint via `ON CONFLICT DO NOTHING`. Five of six Tier 1 gaps closed (lateral delts, lower chest, upper traps, lower traps, spinal erectors). Soleus accepted at 1 primary — existing Seated Calf Raise covers the muscle.
 
 ---
 

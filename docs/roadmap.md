@@ -58,6 +58,14 @@
 
 ## Deferred / Backlog
 
+### Catalog
+
+- Soleus rotation: existing Seated Calf Raise (aaaaaaaa-0044-...) is the
+  only primary soleus exercise. Single-Leg Seated Calf Raise is the natural
+  addition for rotation. Defer until next catalog audit.
+
+### Session Builder / Planning
+
 - Persistence of built weeks to a `workout_templates` Supabase table.
 - Equipment availability filtering (needs equipment prefs on profile).
 - Per-head frequency tuning (calves/forearms tolerate higher
