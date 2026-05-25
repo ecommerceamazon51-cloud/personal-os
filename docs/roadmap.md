@@ -7,23 +7,10 @@
 - **PR #25** — Substitute picker (catalog + workout SWAP)
 - **PR #26** — Hotfix for PR #25 column naming
 - **PR #27** — Session Builder (weekly planner with 2x-frequency framework)
+- **PR #28** — Tier 1 catalog expansion (2 enum values, 18/19 exercises; soleus duplicate skipped via ON CONFLICT)
+- **PR #29** — Session Builder polish: weighted-set rule unified across coverage/history/warnings, focus pattern allow-lists, head-tag chips in add-overlay, spacing + distribution warnings (recovery-hours model), MAV-vs-MRV color fix
 
 ## Queued
-
-### PR #28 — Tier 1 catalog expansion
-- Add 2 new movement_pattern enum values: `spinal_extension`, `scapular_elevation`.
-- Insert 19 new exercises filling coverage gaps in lateral delts, lower chest,
-  upper/lower traps, soleus, and spinal erectors.
-- Catalog-only — no UI changes.
-
-### PR #29 — Session spacing + smart set distribution
-- Detect when same-muscle sessions are scheduled back-to-back without
-  recovery; warn and suggest spacing.
-- Smart distribution: when a head needs N weekly sets across 2 sessions,
-  recommend an even split (e.g. 6+6, not 10+2) to minimize per-session
-  fatigue.
-- Surface "your chest sessions are 1 day apart — needs 48hr recovery"
-  guidance.
 
 ### PR #30 — Exercise teaching cues
 - Each exercise gets concise bullet-point form cues and setup notes.
