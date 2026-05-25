@@ -370,14 +370,14 @@ function buildHistoryFromRows(wrows,crows){
       var dbRow=gExerciseDB&&ex.exercise_id?gExerciseDB[ex.exercise_id]:null;
       if(dbRow){
         if(Array.isArray(dbRow.muscles)){
-          var groups=new Set();
           dbRow.muscles.forEach(function(entry){
             if(entry.weight>=0.5){
-              var g=MUSCLE_HEAD_TO_GROUP[entry.muscle_id];if(g)groups.add(g);
-              if(weeklyHeads.hasOwnProperty(entry.muscle_id))weeklyHeads[entry.muscle_id]++;
+              var contribution=1*entry.weight;
+              if(weeklyHeads.hasOwnProperty(entry.muscle_id))weeklyHeads[entry.muscle_id]+=contribution;
+              var g=MUSCLE_HEAD_TO_GROUP[entry.muscle_id];
+              if(g&&weeklyMuscles.hasOwnProperty(g))weeklyMuscles[g]+=contribution;
             }
           });
-          groups.forEach(function(g){weeklyMuscles[g]++;});
         }
       } else {
         if(ex.muscles){ex.muscles.forEach(function(m){if(weeklyMuscles.hasOwnProperty(m))weeklyMuscles[m]++;});}
@@ -784,16 +784,26 @@ function App(){
   function getExerciseDefaults(role){return BUILDER_ROLE_DEFAULTS[role]||{sets:3,reps:"8-12"};}
   function computeBuilderCoverage(sessions){
     var headSets={};var headFreq={};
+    var headSetsBySession=[];
     Object.keys(MUSCLE_HEAD_TARGETS).forEach(function(h){headSets[h]=0;headFreq[h]=0;});
-    sessions.forEach(function(sess){
-      var hit={};
+    sessions.forEach(function(sess,si){
+      var sessionHeads={};
       sess.exercises.forEach(function(se){
         var row=gExerciseDB&&gExerciseDB[se.exercise_id];if(!row)return;
-        (row.muscles||[]).forEach(function(m){if(m.weight>=0.5&&headSets.hasOwnProperty(m.muscle_id)){headSets[m.muscle_id]+=se.sets;hit[m.muscle_id]=true;}});
+        (row.muscles||[]).forEach(function(m){
+          if(m.weight>=0.5&&headSets.hasOwnProperty(m.muscle_id)){
+            var contribution=se.sets*m.weight;
+            headSets[m.muscle_id]+=contribution;
+            sessionHeads[m.muscle_id]=(sessionHeads[m.muscle_id]||0)+contribution;
+          }
+        });
       });
-      Object.keys(hit).forEach(function(h){headFreq[h]++;});
+      Object.keys(sessionHeads).forEach(function(h){
+        if(sessionHeads[h]>=3.0)headFreq[h]++;
+      });
+      headSetsBySession.push(sessionHeads);
     });
-    return {headSets:headSets,headFreq:headFreq};
+    return {headSets:headSets,headFreq:headFreq,headSetsBySession:headSetsBySession};
   }
   function buildSyntheticWorkout(sess,idx){
     var focusLabel=BUILDER_FOCUS_LABELS[sess.focus]||"Session";
@@ -1715,7 +1725,7 @@ function App(){
     }
 
     var bCov=computeBuilderCoverage(builderSessions);
-    var bHS=bCov.headSets;var bHF=bCov.headFreq;
+    var bHS=bCov.headSets;var bHF=bCov.headFreq;var bHSS=bCov.headSetsBySession;
 
     function renderBuilderCoverage(){
       var groups=Object.keys(MUSCLE_TARGETS);
@@ -1731,10 +1741,10 @@ function App(){
             if(cs.color===C.red)worstClr=C.red;
             else if(cs.color===C.yellow&&worstClr!==C.red)worstClr=C.yellow;
             else if(cs.color===C.purple&&worstClr!==C.red&&worstClr!==C.yellow)worstClr=C.purple;
-            if(sets<t.mev||sets>t.mav||freq<2)allComplete=false;
+            if(sets<t.mev||sets>t.mrv||freq<2)allComplete=false;
           });
           if(!headsInG.length){allComplete=false;worstClr=C.dim;}
-          return h("div",{key:g,style:{flexShrink:0,fontSize:9,color:worstClr,fontWeight:600,whiteSpace:"nowrap"}},g.slice(0,3).toUpperCase()+" "+gSets+"/"+(gTarget||0)+(allComplete?" ✓":""));
+          return h("div",{key:g,style:{flexShrink:0,fontSize:9,color:worstClr,fontWeight:600,whiteSpace:"nowrap"}},g.slice(0,3).toUpperCase()+" "+Math.round(gSets)+"/"+(gTarget||0)+(allComplete?" ✓":""));
         })
       );
       return h("div",{style:{background:C.card,border:"1px solid "+C.border,borderRadius:6,marginBottom:10,position:"sticky",top:0,zIndex:10}},
@@ -1750,10 +1760,11 @@ function App(){
             var gSets=headsInG.reduce(function(s,e){return s+(bHS[e[0]]||0);},0);
             var gTarget=headsInG.reduce(function(s,e){return s+headGoalTarget(e[0]);},0);
             return h("div",{key:g,style:{marginBottom:gi<groups.length-1?12:0}},
-              h("div",{style:{fontSize:9,fontWeight:700,color:C.dim,letterSpacing:2,marginBottom:4}},g.toUpperCase()+" — "+gSets+"/"+gTarget+" sets"),
+              h("div",{style:{fontSize:9,fontWeight:700,color:C.dim,letterSpacing:2,marginBottom:4}},g.toUpperCase()+" — "+Math.round(gSets)+"/"+gTarget+" sets"),
               headsInG.map(function(hEntry,j){
                 var headId=hEntry[0];var headTgt=hEntry[1];
                 var sets=bHS[headId]||0;var freq=bHF[headId]||0;
+                var setsDisplay=Math.round(sets*10)/10;
                 var headPct=Math.min(100,(sets/headTgt.mrv)*100);
                 var cs=headClrStatus(headId,sets);
                 var freqClr=freq>=2?C.green:freq===1?C.yellow:C.red;
@@ -1764,7 +1775,7 @@ function App(){
                     h("div",{style:{display:"flex",alignItems:"center",gap:6}},
                       h("span",{style:{fontSize:8,color:freqClr,fontWeight:600}},freqLabel),
                       h("span",{style:{fontSize:8,color:cs.color,fontWeight:600}},cs.status),
-                      h("span",{style:{fontSize:11,fontWeight:700,color:cs.color}},sets,h("span",{style:{fontSize:8,color:C.dim}},"s"))
+                      h("span",{style:{fontSize:11,fontWeight:700,color:cs.color}},setsDisplay,h("span",{style:{fontSize:8,color:C.dim}},"s"))
                     )
                   ),
                   h("div",{style:{position:"relative",height:3,background:C.dark,borderRadius:2,marginBottom:2}},
@@ -1779,10 +1790,10 @@ function App(){
           }),
           (function(){
             var warns=[];
-            builderSessions.forEach(function(sess,si){
-              var sh={};
-              sess.exercises.forEach(function(se){var row=gExerciseDB&&gExerciseDB[se.exercise_id];if(!row)return;(row.muscles||[]).forEach(function(m){if(m.weight>=0.5&&MUSCLE_HEAD_TARGETS[m.muscle_id])sh[m.muscle_id]=(sh[m.muscle_id]||0)+se.sets;});});
-              Object.keys(sh).forEach(function(headId){if(sh[headId]>=8){var t=MUSCLE_HEAD_TARGETS[headId];warns.push(h("div",{key:headId+si,style:{fontSize:9,color:C.orange,marginTop:4}},"⚠️ Sess "+(si+1)+": "+(t?t.display:headId)+" — "+sh[headId]+" sets in one session"));}});
+            (bHSS||[]).forEach(function(sh,si){
+              Object.keys(sh).forEach(function(headId){
+                if(sh[headId]>=8){var t=MUSCLE_HEAD_TARGETS[headId];warns.push(h("div",{key:headId+si,style:{fontSize:9,color:C.orange,marginTop:4}},"⚠️ Sess "+(si+1)+": "+(t?t.display:headId)+" — "+Math.round(sh[headId]*10)/10+" eff. sets in one session"));}
+              });
             });
             return warns.length?h("div",{style:{marginTop:8}},warns):null;
           })()
