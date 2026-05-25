@@ -156,6 +156,19 @@ Tracks when migrations were actually applied to the Supabase database, separate 
   - Universal orphan check → 0 rows (see template below)
 - **Status:** Pending — run in Supabase Dashboard after merge
 
+## PR #30 — User Exercise Notes Table
+- **File:** `docs/migrations/030_user_exercise_notes.sql`
+- **PR:** #30
+- **Merged to main:** (pending)
+- **Applied to Supabase:** Pending
+- **IMPORTANT:** This migration MUST be run in Supabase Dashboard → SQL Editor BEFORE the frontend code is merged. The frontend loads from `user_exercise_notes` on sign-in; the table must exist before the JS runs.
+- **Description:** Creates `user_exercise_notes` table for per-user, per-exercise, per-muscle coaching cue notes. RLS enabled with all four policies (SELECT/INSERT/UPDATE/DELETE own rows). Index on `(user_id, exercise_id)` for fast per-exercise lookups.
+- **Verification queries:**
+  - `SELECT COUNT(*) FROM user_exercise_notes;` → 0 (empty table, no error)
+  - `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename='user_exercise_notes';` → 1 row
+  - `SELECT policyname FROM pg_policies WHERE tablename='user_exercise_notes';` → 4 rows (users_select_own_notes, users_insert_own_notes, users_update_own_notes, users_delete_own_notes)
+- **Status:** Pending — run BEFORE merging PR #30 frontend code
+
 ---
 
 ## Verification Protocol

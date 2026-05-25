@@ -615,6 +615,22 @@ function getHeadDisplayName(muscleId){
   if(MUSCLE_HEAD_TARGETS[muscleId]&&MUSCLE_HEAD_TARGETS[muscleId].display)return MUSCLE_HEAD_TARGETS[muscleId].display;
   return muscleIdToLabel(muscleId);
 }
+function orderedCueHeads(ex,userCueMap){
+  var hem=(ex&&ex.head_emphasis_notes)||{};
+  var userMap=(ex&&userCueMap&&userCueMap[ex.exercise_id])||{};
+  var weights={};
+  ((ex&&ex.muscles)||[]).forEach(function(m){weights[m.muscle_id]=m.weight;});
+  var keys={};
+  Object.keys(hem).forEach(function(k){keys[k]=true;});
+  Object.keys(userMap).forEach(function(k){keys[k]=true;});
+  var arr=Object.keys(keys);
+  arr.sort(function(a,b){
+    var wa=weights[a]||0,wb=weights[b]||0;
+    if(wb!==wa)return wb-wa;
+    return a<b?-1:1;
+  });
+  return arr;
+}
 
 function AuthScreen(){
   var emailArr=useState("");var email=emailArr[0];var setEmail=emailArr[1];
@@ -840,6 +856,10 @@ function App(){
   var bAddToArr=useState(null);var builderAddingTo=bAddToArr[0];var setBuilderAddingTo=bAddToArr[1];
   var bShowAllArr=useState(false);var builderOverlayShowAll=bShowAllArr[0];var setBuilderOverlayShowAll=bShowAllArr[1];
   var bFocusSheetArr=useState(null);var builderFocusSheet=bFocusSheetArr[0];var setBuilderFocusSheet=bFocusSheetArr[1];
+  var userCuesArr=useState({});var userCues=userCuesArr[0];var setUserCues=userCuesArr[1];
+  var addOverlayExpandedArr=useState({});var addOverlayExpanded=addOverlayExpandedArr[0];var setAddOverlayExpanded=addOverlayExpandedArr[1];
+  var workoutCuesOpenArr=useState({});var workoutCuesOpen=workoutCuesOpenArr[0];var setWorkoutCuesOpen=workoutCuesOpenArr[1];
+  var catalogCueDraftArr=useState({});var catalogCueDraft=catalogCueDraftArr[0];var setCatalogCueDraft=catalogCueDraftArr[1];
 
   function toast(msg,type){
     var id=Date.now()+Math.random();
@@ -926,7 +946,7 @@ function App(){
     });
     var authSub=sb.auth.onAuthStateChange(function(event,session){
       if(event==="SIGNED_IN"&&session){setUser(session.user);loadProfile(session.user.id);loadExerciseDB();}
-      if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setAuthState("unauthed");setHistData(null);setWlog({});setChecks({});setNutLog([]);setRecentFoods([]);gExerciseDB=null;gSubstitutes=null;}
+      if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setAuthState("unauthed");setHistData(null);setWlog({});setChecks({});setNutLog([]);setRecentFoods([]);setUserCues({});gExerciseDB=null;gSubstitutes=null;}
     });
     return function(){authSub.data.subscription.unsubscribe();};
   },[]);
@@ -982,6 +1002,19 @@ function App(){
       if(r.data){var map={};r.data.forEach(function(row){map[row.key]=row.note;});setNotesData(map);}
     });
   },[user,view]);
+
+  useEffect(function(){
+    if(!user)return;
+    sb.from("user_exercise_notes").select("id,exercise_id,muscle_id,cue_text").eq("user_id",user.id).then(function(r){
+      if(r.error||!r.data)return;
+      var map={};
+      r.data.forEach(function(row){
+        if(!map[row.exercise_id])map[row.exercise_id]={};
+        map[row.exercise_id][row.muscle_id]={id:row.id,cue_text:row.cue_text};
+      });
+      setUserCues(map);
+    });
+  },[user]);
 
   useEffect(function(){
     if(!user||view!=="nutrition")return;
@@ -1207,6 +1240,44 @@ function App(){
     setNotesData(function(p){var n=Object.assign({},p);n[key]=text;return n;});
     sb.from("notes").upsert({user_id:user.id,key:key,note:text,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
   }
+  function saveUserCue(exerciseId,muscleId,cueText){
+    var existing=userCues[exerciseId]&&userCues[exerciseId][muscleId];
+    if(existing){
+      sb.from("user_exercise_notes").update({cue_text:cueText,updated_at:new Date().toISOString()}).eq("id",existing.id).then(function(r){
+        if(r.error){toast("Save failed");return;}
+        setUserCues(function(p){
+          var n=Object.assign({},p);
+          n[exerciseId]=Object.assign({},n[exerciseId]||{});
+          n[exerciseId][muscleId]={id:existing.id,cue_text:cueText};
+          return n;
+        });
+      });
+    }else{
+      sb.from("user_exercise_notes").insert({user_id:user.id,exercise_id:exerciseId,muscle_id:muscleId,cue_text:cueText}).select().single().then(function(r){
+        if(r.error||!r.data){toast("Save failed");return;}
+        setUserCues(function(p){
+          var n=Object.assign({},p);
+          n[exerciseId]=Object.assign({},n[exerciseId]||{});
+          n[exerciseId][muscleId]={id:r.data.id,cue_text:cueText};
+          return n;
+        });
+      });
+    }
+  }
+  function deleteUserCue(exerciseId,muscleId){
+    var existing=userCues[exerciseId]&&userCues[exerciseId][muscleId];
+    if(!existing)return;
+    sb.from("user_exercise_notes").delete().eq("id",existing.id).then(function(r){
+      if(r.error){toast("Delete failed");return;}
+      setUserCues(function(p){
+        var n=Object.assign({},p);
+        if(!n[exerciseId])return n;
+        n[exerciseId]=Object.assign({},n[exerciseId]);
+        delete n[exerciseId][muscleId];
+        return n;
+      });
+    });
+  }
   function toggleNote(key){
     setOpenNotes(function(p){var n=Object.assign({},p);n[key]=!p[key];return n;});
   }
@@ -1377,6 +1448,28 @@ function App(){
     );
   }
 
+  function renderCueBlock(ex){
+    var heads=orderedCueHeads(ex,userCues);
+    if(heads.length===0)return null;
+    var hem=(ex&&ex.head_emphasis_notes)||{};
+    var userMap=(userCues&&userCues[ex.exercise_id])||{};
+    return h("div",null,
+      heads.map(function(k,j){
+        var seeded=hem[k];
+        var userCue=userMap[k];
+        return h("div",{key:j,style:{marginBottom:4}},
+          seeded?h("div",{style:{fontSize:11,color:C.white,marginBottom:userCue?2:0}},
+            h("span",{style:{color:C.grey}},getHeadDisplayName(k)+": "),seeded
+          ):null,
+          userCue?h("div",{style:{fontSize:11,color:C.white}},
+            h("span",{style:{color:C.accent,fontSize:9,letterSpacing:1,marginRight:4}},"YOUR NOTE"),
+            h("span",{style:{color:C.grey}},seeded?"":getHeadDisplayName(k)+": "),userCue.cue_text
+          ):null
+        );
+      })
+    );
+  }
+
   function WorkoutView(){
     var vd=viewDate;var vdDay=getDayIdx(vd);var vdWorkout=WORKOUTS[vdDay];
     var isPast=vd!==dt;var activeLog=isPast?pastLog:wlog;
@@ -1431,6 +1524,8 @@ function App(){
         var ghostEx=ghost&&!isPast&&ghost.exercises[eIdx];
         var swappedId=!isPast?swappedExercises[ex.exercise_id]:null;
         var displayEx=swappedId&&gExerciseDB&&gExerciseDB[swappedId]?gExerciseDB[swappedId]:ex;
+        var cueEx=gExerciseDB&&gExerciseDB[displayEx.exercise_id]?gExerciseDB[displayEx.exercise_id]:displayEx;
+        var hasCues=!!(cueEx&&orderedCueHeads(cueEx,userCues).length>0);
         var pr=history&&history.prs[displayEx.name];
         var hasAnySetLogged=false;
         if(!isPast){for(var si=0;si<setCount;si++){if(wlog[eIdx+"-"+si+"-done"]||wlog[eIdx+"-"+si+"-w"]||wlog[eIdx+"-"+si+"-r"]){hasAnySetLogged=true;break;}}}
@@ -1450,6 +1545,7 @@ function App(){
                   :ex.sets+"x"+ex.reps+" — "+ex.note)
             ),
             h("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0,marginLeft:8}},
+              !isPast&&hasCues?h("div",{onClick:function(){setWorkoutCuesOpen(function(p){var n=Object.assign({},p);n[ex.name]=!p[ex.name];return n;});},style:{fontSize:9,letterSpacing:1,color:C.grey,cursor:"pointer",padding:"2px 7px",border:"1px solid "+C.border,borderRadius:3,userSelect:"none"}},workoutCuesOpen[ex.name]?"HIDE":"CUES"):null,
               !isPast?h("div",{onClick:function(){toggleNote(ex.name);},style:{fontSize:9,letterSpacing:1,color:notesData[ex.name]?C.grey:C.dim,cursor:"pointer",padding:"2px 7px",border:"1px solid "+(notesData[ex.name]?C.border:C.dark),borderRadius:3,userSelect:"none"}},openNotes[ex.name]?"CLOSE":"NOTES"):null,
               !isPast&&!hasAnySetLogged?h("div",{onClick:function(){setSubSheet({exercise:displayEx,workoutOriginalId:ex.exercise_id,context:"workout"});},style:{fontSize:9,letterSpacing:1,color:C.blue,cursor:"pointer",padding:"2px 7px",border:"1px solid "+C.blue+"55",borderRadius:3,userSelect:"none"}},"SWAP"):null,
               pr&&pr.weight>0?h("div",{style:{background:C.accent+"15",border:"1px solid "+C.accent+"33",borderRadius:6,padding:"4px 8px",textAlign:"center"}},
@@ -1459,6 +1555,10 @@ function App(){
             )
           ),
           openNotes[ex.name]?h("textarea",{key:ex.name+"-note",defaultValue:notesData[ex.name]||"",placeholder:"Notes for "+ex.name+"...",autoFocus:true,rows:3,onBlur:function(e){saveNote(ex.name,e.target.value);setOpenNotes(function(p){var n=Object.assign({},p);n[ex.name]=false;return n;});},style:{width:"100%",background:"#0d0d12",border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px",color:C.white,fontSize:12,fontFamily:"'Courier New',monospace",resize:"none",lineHeight:1.5,marginBottom:8,display:"block"}}):null,
+          workoutCuesOpen[ex.name]&&hasCues?h("div",{style:{background:"#0d0d12",border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px",marginBottom:8}},
+            h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"),
+            renderCueBlock(cueEx)
+          ):null,
           !isPast&&isDeload&&deloadWeight?h("div",{style:{background:C.orange+"15",border:"1px solid "+C.orange+"33",borderRadius:6,padding:"6px 10px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}},
             h("div",{style:{fontSize:11,color:C.orange}},"⚠️ Deload target"),
             h("div",{style:{fontSize:13,fontWeight:700,color:C.orange}},deloadWeight+" lb")
@@ -2004,25 +2104,42 @@ function App(){
             var alreadyIn=sessRef.exercises.some(function(se){return se.exercise_id===ex.exercise_id;});
             var capturedSessId=builderAddingTo;
             var topHeads=getTopPrimaryHeads(ex.muscles,2);
-            return h("div",{key:ex.exercise_id,
-              onClick:function(){
-                if(alreadyIn){toast(ex.name+" already in this session");return;}
-                var defs=getExerciseDefaults(ex.default_role);
-                setBuilderSessions(function(p){return p.map(function(s){if(s.id!==capturedSessId)return s;return Object.assign({},s,{exercises:s.exercises.concat({exercise_id:ex.exercise_id,sets:defs.sets,reps:defs.reps})});});});
-                closeFn();toast(ex.name+" added to Session "+(sessIdx+1));
+            var isExpanded=!!addOverlayExpanded[ex.exercise_id];
+            var hasCuesEx=orderedCueHeads(ex,userCues).length>0;
+            var hasAliases=ex.aliases&&ex.aliases.length>0;
+            var canExpand=hasCuesEx||hasAliases;
+            return h("div",{key:ex.exercise_id,style:{borderBottom:"1px solid "+C.border}},
+              h("div",{
+                onClick:function(){
+                  if(alreadyIn){toast(ex.name+" already in this session");return;}
+                  var defs=getExerciseDefaults(ex.default_role);
+                  setBuilderSessions(function(p){return p.map(function(s){if(s.id!==capturedSessId)return s;return Object.assign({},s,{exercises:s.exercises.concat({exercise_id:ex.exercise_id,sets:defs.sets,reps:defs.reps})});});});
+                  closeFn();toast(ex.name+" added to Session "+(sessIdx+1));
+                },
+                style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"10px 0",cursor:"pointer",opacity:alreadyIn?0.4:1,minHeight:44}
               },
-              style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid "+C.border,cursor:"pointer",opacity:alreadyIn?0.4:1,minHeight:44}
-            },
-              h("div",{style:{flex:1}},
-                h("div",{style:{fontSize:12,fontWeight:600,color:C.white,marginBottom:2}},ex.name),
-                h("div",{style:{fontSize:10,color:C.dim,marginBottom:topHeads.length>0?4:0}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," ")+" · "+primaryGroup),
-                topHeads.length>0?h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
-                  topHeads.map(function(headId){
-                    return h("span",{key:headId,style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.accent+"22",color:C.accent,fontWeight:600}},getHeadDisplayName(headId));
-                  })
-                ):null
+                h("div",{style:{flex:1,minWidth:0}},
+                  h("div",{style:{fontSize:12,fontWeight:600,color:C.white,marginBottom:2}},ex.name),
+                  h("div",{style:{fontSize:10,color:C.dim,marginBottom:topHeads.length>0?4:0}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," ")+" · "+primaryGroup),
+                  topHeads.length>0?h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+                    topHeads.map(function(headId){
+                      return h("span",{key:headId,style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.accent+"22",color:C.accent,fontWeight:600}},getHeadDisplayName(headId));
+                    })
+                  ):null
+                ),
+                canExpand?h("span",{
+                  onClick:function(e){e.stopPropagation();setAddOverlayExpanded(function(p){var n=Object.assign({},p);n[ex.exercise_id]=!p[ex.exercise_id];return n;});},
+                  style:{fontSize:14,color:isExpanded?C.accent:C.dim,cursor:"pointer",padding:"6px 8px",lineHeight:1,flexShrink:0,marginLeft:4,userSelect:"none"}
+                },"ⓘ"):null,
+                h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:fi.color+"22",color:fi.color,fontWeight:600,flexShrink:0,marginLeft:8,marginTop:2}},fi.label)
               ),
-              h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:fi.color+"22",color:fi.color,fontWeight:600,flexShrink:0,marginLeft:8}},fi.label)
+              isExpanded?h("div",{style:{padding:"0 0 12px 0"}},
+                hasAliases?h("div",{style:{fontSize:10,color:C.dim,marginBottom:6}},ex.aliases.join(", ")):null,
+                hasCuesEx?h("div",null,
+                  h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"),
+                  renderCueBlock(ex)
+                ):null
+              ):null
             );
           })
         )
@@ -2102,8 +2219,6 @@ function App(){
       var fi=FATIGUE_INFO[ex.default_role]||{label:"—",color:C.dim,explanation:"—"};
       var subCount=catalogSubCounts[ex.exercise_id]||0;
       var primaryMuscles=(ex.muscles||[]).filter(function(m){return m.weight>=0.5;});
-      var hem=ex.head_emphasis_notes;
-      var hemKeys=hem?Object.keys(hem):[];
       return h("div",{key:ex.exercise_id,id:"ex-"+ex.exercise_id,style:{background:C.bg,border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px",marginBottom:6}},
         h("div",{onClick:function(){setCatalogExpanded(function(p){var n=Object.assign({},p);n[ex.exercise_id]=!p[ex.exercise_id];return n;});},style:{cursor:"pointer"}},
           h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}},
@@ -2125,14 +2240,40 @@ function App(){
                 muscleIdToLabel(m.muscle_id)+" "+(m.weight===1.0?"— primary":"— secondary"));
             })
           ):null,
-          hemKeys.length>0?h("div",{style:{marginBottom:8}},
-            h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"),
-            hemKeys.map(function(k,j){
-              return h("div",{key:j,style:{fontSize:11,color:C.white,marginBottom:2}},
-                h("span",{style:{color:C.grey}},muscleIdToLabel(k)+": "),hem[k]
-              );
-            })
-          ):null,
+          (function(){
+            var heads=orderedCueHeads(ex,userCues);
+            var hasAnyCue=heads.length>0;
+            var draft=catalogCueDraft[ex.exercise_id];
+            var availableHeads=(ex.muscles||[]).filter(function(m){return m.weight>=0.5;}).map(function(m){return m.muscle_id;});
+            var userMap=(userCues&&userCues[ex.exercise_id])||{};
+            var userKeys=Object.keys(userMap);
+            userKeys.sort(function(a,b){
+              var ia=heads.indexOf(a),ib=heads.indexOf(b);
+              return (ia<0?999:ia)-(ib<0?999:ib);
+            });
+            var canAuthor=availableHeads.length>0;
+            if(!hasAnyCue&&!canAuthor)return null;
+            return h("div",{style:{marginBottom:8}},
+              hasAnyCue?h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"):null,
+              hasAnyCue?renderCueBlock(ex):null,
+              userKeys.map(function(mid){
+                return h("div",{key:"edit-"+mid,style:{display:"flex",gap:12,marginTop:4}},
+                  h("span",{onClick:function(e){e.stopPropagation();setCatalogCueDraft(function(p){var n=Object.assign({},p);n[ex.exercise_id]={muscleId:mid,text:userMap[mid].cue_text};return n;});},style:{fontSize:9,color:C.accent,cursor:"pointer",letterSpacing:1}},"EDIT "+getHeadDisplayName(mid).toUpperCase()),
+                  h("span",{onClick:function(e){e.stopPropagation();if(confirm("Delete your cue for "+getHeadDisplayName(mid)+"?"))deleteUserCue(ex.exercise_id,mid);},style:{fontSize:9,color:C.dim,cursor:"pointer",letterSpacing:1}},"DELETE")
+                );
+              }),
+              draft?h("div",{onClick:function(e){e.stopPropagation();},style:{marginTop:8,padding:8,background:"#0d0d12",border:"1px solid "+C.border,borderRadius:6}},
+                h("select",{value:draft.muscleId,onChange:function(e){var v=e.target.value;setCatalogCueDraft(function(p){var n=Object.assign({},p);n[ex.exercise_id]=Object.assign({},n[ex.exercise_id],{muscleId:v});return n;});},style:{width:"100%",background:C.bg,border:"1px solid "+C.border,borderRadius:4,padding:"6px 8px",color:C.white,fontSize:11,marginBottom:6}},
+                  availableHeads.map(function(mid){return h("option",{key:mid,value:mid},getHeadDisplayName(mid));})
+                ),
+                h("textarea",{value:draft.text,onChange:function(e){var v=e.target.value;setCatalogCueDraft(function(p){var n=Object.assign({},p);n[ex.exercise_id]=Object.assign({},n[ex.exercise_id],{text:v});return n;});},placeholder:"Your cue...",rows:2,style:{width:"100%",background:C.bg,border:"1px solid "+C.border,borderRadius:4,padding:"6px 8px",color:C.white,fontSize:11,fontFamily:"'Courier New',monospace",resize:"none",marginBottom:6}}),
+                h("div",{style:{display:"flex",gap:8}},
+                  h("span",{onClick:function(){if(!draft.text.trim())return;saveUserCue(ex.exercise_id,draft.muscleId,draft.text.trim());setCatalogCueDraft(function(p){var n=Object.assign({},p);delete n[ex.exercise_id];return n;});},style:{fontSize:10,color:C.accent,cursor:"pointer",letterSpacing:1,padding:"4px 8px",border:"1px solid "+C.accent+"55",borderRadius:3}},"SAVE"),
+                  h("span",{onClick:function(){setCatalogCueDraft(function(p){var n=Object.assign({},p);delete n[ex.exercise_id];return n;});},style:{fontSize:10,color:C.dim,cursor:"pointer",letterSpacing:1,padding:"4px 8px"}},"CANCEL")
+                )
+              ):(canAuthor?h("div",{onClick:function(e){e.stopPropagation();setCatalogCueDraft(function(p){var n=Object.assign({},p);n[ex.exercise_id]={muscleId:availableHeads[0],text:""};return n;});},style:{fontSize:10,color:C.accent,cursor:"pointer",letterSpacing:1,marginTop:6}},"+ ADD YOUR CUE"):null)
+            );
+          })(),
           h("div",{style:{fontSize:11,color:C.dim,marginBottom:4}},fi.explanation),
           subCount>0
             ?h("div",{onClick:function(e){e.stopPropagation();setSubSheet({exercise:ex,context:"catalog"});},style:{fontSize:11,color:C.accent,cursor:"pointer",textDecoration:"underline"}},
