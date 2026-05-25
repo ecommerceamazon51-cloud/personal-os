@@ -512,6 +512,60 @@ var BUILDER_FOCUS_PATTERNS_ALLOW={
   custom:null
 };
 var BUILDER_ROLE_DEFAULTS={main_compound:{sets:4,reps:"5-8"},secondary_compound:{sets:3,reps:"8-10"},accessory:{sets:3,reps:"10-12"},isolation:{sets:3,reps:"12-15"}};
+var MUSCLE_RECOVERY_HOURS={Chest:48,Back:48,Quads:48,Hamstrings:48,Glutes:48,Shoulders:36,Triceps:36,Biceps:36,Calves:36};
+function getHeadRecoveryHours(headId){
+  if(headId==="spinal_erectors")return 72;
+  if(headId==="rectus_abdominis"||headId==="obliques"||headId==="transverse_abdominis")return 24;
+  var group=MUSCLE_HEAD_TO_GROUP[headId];
+  return MUSCLE_RECOVERY_HOURS[group]||48;
+}
+function computeSpacingWarnings(sessions,headSetsBySession){
+  var n=sessions.length;if(n<2)return [];
+  var assumedGapHours=168/n;
+  var warnings=[];
+  for(var i=0;i<n;i++){
+    for(var j=i+1;j<n;j++){
+      var headsI=headSetsBySession[i]||{};var headsJ=headSetsBySession[j]||{};
+      Object.keys(headsI).forEach(function(headId){
+        if(headsI[headId]<3.0)return;
+        if((headsJ[headId]||0)<3.0)return;
+        var recovery=getHeadRecoveryHours(headId);
+        var directGap=(j-i)*assumedGapHours;
+        var wrapGap=(n-(j-i))*assumedGapHours;
+        var minGap=Math.min(directGap,wrapGap);
+        if(minGap<recovery){
+          var headTgt=MUSCLE_HEAD_TARGETS[headId];
+          warnings.push({headId:headId,sessionI:i+1,sessionJ:j+1,gapHours:Math.round(minGap),recoveryHours:recovery,displayName:headTgt?headTgt.display:headId});
+        }
+      });
+    }
+  }
+  return warnings;
+}
+function computeDistributionWarnings(sessions,headSetsBySession){
+  var perHead={};
+  headSetsBySession.forEach(function(sh,si){
+    Object.keys(sh).forEach(function(headId){
+      if(sh[headId]<3.0)return;
+      if(!perHead[headId])perHead[headId]=[];
+      perHead[headId].push({sessionIdx:si+1,sets:sh[headId]});
+    });
+  });
+  var warnings=[];
+  Object.keys(perHead).forEach(function(headId){
+    var hits=perHead[headId];if(hits.length<2)return;
+    var maxH=hits.reduce(function(a,b){return a.sets>b.sets?a:b;});
+    var minH=hits.reduce(function(a,b){return a.sets<b.sets?a:b;});
+    if(minH.sets>0&&maxH.sets/minH.sets>=2.0){
+      var headTgt=MUSCLE_HEAD_TARGETS[headId];
+      var sumSets=hits.reduce(function(s,hh){return s+hh.sets;},0);
+      var evenSplit=Math.round(sumSets/hits.length*10)/10;
+      var setsStr=hits.map(function(hh){return Math.round(hh.sets*10)/10;}).join(" + ");
+      warnings.push({headId:headId,displayName:headTgt?headTgt.display:headId,setsStr:setsStr,suggestedEach:evenSplit});
+    }
+  });
+  return warnings;
+}
 
 function muscleIdToLabel(id){
   return id.split("_").map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(" ");
@@ -1820,6 +1874,30 @@ function App(){
               });
             });
             return warns.length?h("div",{style:{marginTop:8}},warns):null;
+          })(),
+          (function(){
+            var spacingWarns=computeSpacingWarnings(builderSessions,bHSS||[]);
+            if(!spacingWarns.length)return null;
+            return h("div",{style:{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.border}},
+              h("div",{style:{fontSize:9,fontWeight:700,color:C.dim,letterSpacing:2,marginBottom:4}},"SPACING WARNINGS"),
+              spacingWarns.map(function(w,wi){
+                return h("div",{key:wi,style:{fontSize:9,color:C.orange,marginBottom:3,lineHeight:1.4}},
+                  "⚠️ "+w.displayName+" is hit in Session "+w.sessionI+" and Session "+w.sessionJ+" (~"+w.gapHours+"h apart with "+builderSessions.length+" sessions/week). Needs ~"+w.recoveryHours+"h recovery."
+                );
+              })
+            );
+          })(),
+          (function(){
+            var distWarns=computeDistributionWarnings(builderSessions,bHSS||[]);
+            if(!distWarns.length)return null;
+            return h("div",{style:{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.border}},
+              h("div",{style:{fontSize:9,fontWeight:700,color:C.dim,letterSpacing:2,marginBottom:4}},"DISTRIBUTION WARNINGS"),
+              distWarns.map(function(w,wi){
+                return h("div",{key:wi,style:{fontSize:9,color:C.orange,marginBottom:3,lineHeight:1.4}},
+                  "⚠️ "+w.displayName+" sets are uneven across the week ("+w.setsStr+"). Try closer to "+w.suggestedEach+" each session for better recovery."
+                );
+              })
+            );
           })()
         ):null
       );
