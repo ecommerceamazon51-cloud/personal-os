@@ -546,6 +546,21 @@ function getPrimaryMuscleGroupsForExercise(muscles){
   });
   return Object.keys(groups);
 }
+// Returns top N muscle_ids by weight where weight >= 0.75, sorted desc by weight,
+// ties broken alphabetically. Default N=2. Used by add-overlay head-tag chips.
+function getTopPrimaryHeads(muscles,n){
+  n=n||2;
+  var primaries=(muscles||[]).filter(function(m){return m.weight>=0.75;});
+  primaries.sort(function(a,b){
+    if(b.weight!==a.weight)return b.weight-a.weight;
+    return a.muscle_id<b.muscle_id?-1:1;
+  });
+  return primaries.slice(0,n).map(function(m){return m.muscle_id;});
+}
+function getHeadDisplayName(muscleId){
+  if(MUSCLE_HEAD_TARGETS[muscleId]&&MUSCLE_HEAD_TARGETS[muscleId].display)return MUSCLE_HEAD_TARGETS[muscleId].display;
+  return muscleIdToLabel(muscleId);
+}
 
 function AuthScreen(){
   var emailArr=useState("");var email=emailArr[0];var setEmail=emailArr[1];
@@ -1910,6 +1925,7 @@ function App(){
             var fi=FATIGUE_INFO[ex.default_role]||{label:"—",color:C.dim};
             var alreadyIn=sessRef.exercises.some(function(se){return se.exercise_id===ex.exercise_id;});
             var capturedSessId=builderAddingTo;
+            var topHeads=getTopPrimaryHeads(ex.muscles,2);
             return h("div",{key:ex.exercise_id,
               onClick:function(){
                 if(alreadyIn){toast(ex.name+" already in this session");return;}
@@ -1921,7 +1937,12 @@ function App(){
             },
               h("div",{style:{flex:1}},
                 h("div",{style:{fontSize:12,fontWeight:600,color:C.white,marginBottom:2}},ex.name),
-                h("div",{style:{fontSize:10,color:C.dim}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," ")+" · "+primaryGroup)
+                h("div",{style:{fontSize:10,color:C.dim,marginBottom:topHeads.length>0?4:0}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," ")+" · "+primaryGroup),
+                topHeads.length>0?h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+                  topHeads.map(function(headId){
+                    return h("span",{key:headId,style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.accent+"22",color:C.accent,fontWeight:600}},getHeadDisplayName(headId));
+                  })
+                ):null
               ),
               h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:fi.color+"22",color:fi.color,fontWeight:600,flexShrink:0,marginLeft:8}},fi.label)
             );
