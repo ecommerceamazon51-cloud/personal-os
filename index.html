@@ -2157,13 +2157,13 @@ function App(){
       function getGroupMev(g){return getHeadsForGroup(g).reduce(function(s,hid){var t=MUSCLE_HEAD_TARGETS[hid];return s+(t?t.mev:0);},0);}
       function getGroupMrv(g){return getHeadsForGroup(g).reduce(function(s,hid){var t=MUSCLE_HEAD_TARGETS[hid];return s+(t?t.mrv:0);},0);}
 
-      // Head dot status: 'red' | 'amber' | 'none'
+      // Head dot status: 'red' | 'amber' | 'green'
       function headDotStatus(headId){
-        var t=MUSCLE_HEAD_TARGETS[headId];if(!t)return "none";
+        var t=MUSCLE_HEAD_TARGETS[headId];if(!t)return "green";
         var hs=bHS[headId]||0;
         if(hs<t.mev)return "red";
         if(hs>=t.mrv)return "amber";
-        return "none";
+        return "green";
       }
 
       // Build group→head→[exercises] map from filtered exercises
@@ -2206,7 +2206,7 @@ function App(){
       pillHeads.sort(function(a,b){
         var ga=MUSCLE_HEAD_TO_GROUP[a]||"";var gb=MUSCLE_HEAD_TO_GROUP[b]||"";
         var sa=headDotStatus(a);var sb=headDotStatus(b);
-        var order={"red":0,"amber":1,"none":2};
+        var order={"red":0,"amber":1,"green":2};
         if(order[sa]!==order[sb])return order[sa]-order[sb];
         return a<b?-1:1;
       });
@@ -2283,7 +2283,7 @@ function App(){
               if(headExes.length===0)return null;
               var hs=bHS[headId]||0;
               var dot=headDotStatus(headId);
-              var dotColor=dot==="red"?C.red:dot==="amber"?C.orange:null;
+              var dotColor=dot==="red"?C.red:dot==="amber"?C.orange:C.green;
               var headOpen=isHeadOpen(headId);
               return h("div",{key:headId,
                 ref:function(el){overlayHeadRefsRef.current[headId]=el;},
@@ -2292,7 +2292,7 @@ function App(){
                 h("div",{onClick:function(){setOverlayHeadOpen(function(p){var n=Object.assign({},p);n[headId]=!p[headId];return n;});},
                   style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",cursor:"pointer",minHeight:36}},
                   h("div",{style:{display:"flex",alignItems:"center",gap:5}},
-                    dotColor?h("span",{style:{width:6,height:6,borderRadius:"50%",background:dotColor,display:"inline-block",flexShrink:0}}):null,
+                    h("span",{style:{width:6,height:6,borderRadius:"50%",background:dotColor,display:"inline-block",flexShrink:0}}),
                     h("span",{style:{fontSize:11,color:C.grey,fontWeight:600}},getHeadDisplayName(headId)),
                     h("span",{style:{fontSize:9,color:C.dim}},Math.round(hs*10)/10+"/"+Math.round((MUSCLE_HEAD_TARGETS[headId]&&MUSCLE_HEAD_TARGETS[headId].mav)||0))
                   ),
@@ -2328,9 +2328,9 @@ function App(){
               var g=MUSCLE_HEAD_TO_GROUP[hid]||"";
               var dot=headDotStatus(hid);
               var hs=bHS[hid]||0;
-              var pillClr=dot==="red"?C.red:dot==="amber"?C.orange:C.dim;
+              var pillClr=dot==="red"?C.red:dot==="amber"?C.orange:C.green;
               return h("div",{key:hid,onClick:function(){scrollToHead(hid,g);},
-                style:{flexShrink:0,padding:"3px 7px",borderRadius:20,border:"1px solid "+(dot!=="none"?pillClr+"88":C.border),cursor:"pointer",fontSize:9,color:pillClr,fontWeight:dot!=="none"?700:400,whiteSpace:"nowrap",background:dot!=="none"?pillClr+"11":"transparent"}
+                style:{flexShrink:0,padding:"3px 7px",borderRadius:20,border:"1px solid "+pillClr+"88",cursor:"pointer",fontSize:9,color:pillClr,fontWeight:700,whiteSpace:"nowrap",background:pillClr+"11"}
               },headShortLabel(hid)+" "+Math.round(hs*10)/10+"/"+Math.round((MUSCLE_HEAD_TARGETS[hid]&&MUSCLE_HEAD_TARGETS[hid].mav)||0));
             })
           ):null,
