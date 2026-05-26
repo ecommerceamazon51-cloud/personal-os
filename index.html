@@ -611,6 +611,27 @@ function getTopPrimaryHeads(muscles,n){
   });
   return primaries.slice(0,n).map(function(m){return m.muscle_id;});
 }
+// Returns {muscle_id, weight, tieCount} for the single highest-weight muscle (weight>=0.5).
+// Tie-break: first alphabetically by muscle_id. tieCount = count tied at top weight.
+// Returns null if no qualifying muscle.
+function getStrongestHead(muscles){
+  var qualifying=(muscles||[]).filter(function(m){return m.weight>=0.5;});
+  if(!qualifying.length)return null;
+  qualifying.sort(function(a,b){
+    if(b.weight!==a.weight)return b.weight-a.weight;
+    return a.muscle_id<b.muscle_id?-1:1;
+  });
+  var top=qualifying[0];
+  var tieCount=qualifying.filter(function(m){return m.weight===top.weight;}).length;
+  return {muscle_id:top.muscle_id,weight:top.weight,tieCount:tieCount};
+}
+// Returns all head muscle_ids for a MUSCLE_TARGETS group key.
+// Source: MUSCLE_HEAD_TARGETS filtered by MUSCLE_HEAD_TO_GROUP — no DB fetch needed.
+function getHeadsForGroup(groupMuscleId){
+  return Object.keys(MUSCLE_HEAD_TARGETS).filter(function(hid){
+    return MUSCLE_HEAD_TO_GROUP[hid]===groupMuscleId;
+  });
+}
 function getHeadDisplayName(muscleId){
   if(MUSCLE_HEAD_TARGETS[muscleId]&&MUSCLE_HEAD_TARGETS[muscleId].display)return MUSCLE_HEAD_TARGETS[muscleId].display;
   return muscleIdToLabel(muscleId);
@@ -630,6 +651,30 @@ function orderedCueHeads(ex,userCueMap){
     return a<b?-1:1;
   });
   return arr;
+}
+// Shared set-counting walk: accumulates set_count × muscle_weight per muscle_id.
+// groupBy='head' → {[muscle_id]: totalWeightedSets}
+// groupBy='group' → {[MUSCLE_TARGETS_group]: totalWeightedSets}
+// Weight threshold: >= 0.5. Uses gExerciseDB (populated after auth).
+function rollupBuilderVolume(sessions,groupBy){
+  var headTotals={};
+  (sessions||[]).forEach(function(sess){
+    (sess.exercises||[]).forEach(function(se){
+      var row=gExerciseDB&&gExerciseDB[se.exercise_id];if(!row)return;
+      (row.muscles||[]).forEach(function(m){
+        if(m.weight>=0.5){headTotals[m.muscle_id]=(headTotals[m.muscle_id]||0)+se.sets*m.weight;}
+      });
+    });
+  });
+  if(groupBy==="group"){
+    var gt={};
+    Object.keys(headTotals).forEach(function(mid){
+      var g=MUSCLE_HEAD_TO_GROUP[mid];if(!g)return;
+      gt[g]=(gt[g]||0)+headTotals[mid];
+    });
+    return gt;
+  }
+  return headTotals;
 }
 
 function AuthScreen(){
@@ -860,6 +905,10 @@ function App(){
   var addOverlayExpandedArr=useState({});var addOverlayExpanded=addOverlayExpandedArr[0];var setAddOverlayExpanded=addOverlayExpandedArr[1];
   var workoutCuesOpenArr=useState({});var workoutCuesOpen=workoutCuesOpenArr[0];var setWorkoutCuesOpen=workoutCuesOpenArr[1];
   var catalogCueDraftArr=useState({});var catalogCueDraft=catalogCueDraftArr[0];var setCatalogCueDraft=catalogCueDraftArr[1];
+  var overlayGroupOpenArr=useState({});var overlayGroupOpen=overlayGroupOpenArr[0];var setOverlayGroupOpen=overlayGroupOpenArr[1];
+  var overlayHeadOpenArr=useState({});var overlayHeadOpen=overlayHeadOpenArr[0];var setOverlayHeadOpen=overlayHeadOpenArr[1];
+  var overlayFiltersArr=useState({muscle:[],equipment:[]});var overlayFilters=overlayFiltersArr[0];var setOverlayFilters=overlayFiltersArr[1];
+  var overlayHeadRefsRef=useRef({});
 
   function toast(msg,type){
     var id=Date.now()+Math.random();
@@ -881,24 +930,24 @@ function App(){
   function makeBuilderSession(idx){return {id:"bsess-"+Date.now()+"-"+idx,focus:"none",customMuscles:[],exercises:[]};}
   function getExerciseDefaults(role){return BUILDER_ROLE_DEFAULTS[role]||{sets:3,reps:"8-12"};}
   function computeBuilderCoverage(sessions){
-    var headSets={};var headFreq={};
-    var headSetsBySession=[];
-    Object.keys(MUSCLE_HEAD_TARGETS).forEach(function(h){headSets[h]=0;headFreq[h]=0;});
-    sessions.forEach(function(sess,si){
+    // Totals via shared rollupBuilderVolume — no duplicated set-counting math here.
+    var rolledUp=rollupBuilderVolume(sessions,"head");
+    var headSets={};var headFreq={};var headSetsBySession=[];
+    Object.keys(MUSCLE_HEAD_TARGETS).forEach(function(h){headSets[h]=rolledUp[h]||0;headFreq[h]=0;});
+    // Per-session pass: needed only for headFreq (2×/week check) and headSetsBySession
+    // (spacing/distribution warnings). Uses same se.sets×m.weight math via rollupBuilderVolume above.
+    sessions.forEach(function(sess){
       var sessionHeads={};
       sess.exercises.forEach(function(se){
         var row=gExerciseDB&&gExerciseDB[se.exercise_id];if(!row)return;
         (row.muscles||[]).forEach(function(m){
           if(m.weight>=0.5&&headSets.hasOwnProperty(m.muscle_id)){
-            var contribution=se.sets*m.weight;
-            headSets[m.muscle_id]+=contribution;
-            sessionHeads[m.muscle_id]=(sessionHeads[m.muscle_id]||0)+contribution;
+            var c=se.sets*m.weight;
+            sessionHeads[m.muscle_id]=(sessionHeads[m.muscle_id]||0)+c;
           }
         });
       });
-      Object.keys(sessionHeads).forEach(function(h){
-        if(sessionHeads[h]>=3.0)headFreq[h]++;
-      });
+      Object.keys(sessionHeads).forEach(function(h){if(sessionHeads[h]>=3.0)headFreq[h]++;});
       headSetsBySession.push(sessionHeads);
     });
     return {headSets:headSets,headFreq:headFreq,headSetsBySession:headSetsBySession};
@@ -1085,6 +1134,15 @@ function App(){
     document.addEventListener("visibilitychange",onVisChange);
     return function(){document.removeEventListener("visibilitychange",onVisChange);};
   },[]);
+
+  useEffect(function(){
+    if(builderAddingTo){
+      setOverlayGroupOpen({});
+      setOverlayHeadOpen({});
+      setOverlayFilters({muscle:[],equipment:[]});
+      overlayHeadRefsRef.current={};
+    }
+  },[builderAddingTo]);
 
   function loadHistory(){
     if(!user||histLoading)return;
@@ -2062,24 +2120,200 @@ function App(){
       var sessIdx=-1;var sessRef=null;
       for(var oi=0;oi<builderSessions.length;oi++){if(builderSessions[oi].id===builderAddingTo){sessIdx=oi;sessRef=builderSessions[oi];break;}}
       if(!sessRef)return null;
+      var closeFn=function(){setBuilderAddingTo(null);setBuilderOverlayShowAll(false);};
+
+      // Session focus filter (existing behaviour, unchanged)
       var focusMuscles=null;
       if(!builderOverlayShowAll){
         if(sessRef.focus==="custom"&&sessRef.customMuscles.length>0)focusMuscles=sessRef.customMuscles;
         else if(BUILDER_FOCUS_MUSCLES[sessRef.focus])focusMuscles=BUILDER_FOCUS_MUSCLES[sessRef.focus];
       }
-      var overlayEx=(allEx||[]).filter(function(ex){
+
+      // Overlay muscle/equipment filter chip helpers
+      function toggleOverlayFilter(key,val){
+        setOverlayFilters(function(prev){
+          var arr=prev[key]||[];
+          var nArr=arr.indexOf(val)>=0?arr.filter(function(v){return v!==val;}):arr.concat(val);
+          var u={};u[key]=nArr;return Object.assign({},prev,u);
+        });
+      }
+      var anyOverlayFilter=overlayFilters.muscle.length>0||overlayFilters.equipment.length>0;
+
+      // Shared exercise filter (focus + chip filters)
+      function passesFilter(ex){
         if(catalogSearch){var q=catalogSearch.toLowerCase();if(ex.name.toLowerCase().indexOf(q)<0&&!(ex.aliases||[]).some(function(a){return a.toLowerCase().indexOf(q)>=0;}))return false;}
-        if(focusMuscles){
-          var exGroups=getPrimaryMuscleGroupsForExercise(ex.muscles);
-          if(!focusMuscles.some(function(m){return exGroups.indexOf(m)>=0;}))return false;
-        }
-        if(!builderOverlayShowAll){
-          var allowedPatterns=BUILDER_FOCUS_PATTERNS_ALLOW[sessRef.focus];
-          if(allowedPatterns!==null&&allowedPatterns!==undefined&&allowedPatterns.indexOf(ex.movement_pattern_primary)<0)return false;
-        }
+        if(focusMuscles){var exGs=getPrimaryMuscleGroupsForExercise(ex.muscles);if(!focusMuscles.some(function(m){return exGs.indexOf(m)>=0;}))return false;}
+        if(!builderOverlayShowAll){var ap=BUILDER_FOCUS_PATTERNS_ALLOW[sessRef.focus];if(ap!==null&&ap!==undefined&&ap.indexOf(ex.movement_pattern_primary)<0)return false;}
+        if(overlayFilters.muscle.length>0){var exGs2=getMuscleGroupsForExercise(ex.muscles);if(!overlayFilters.muscle.some(function(m){return exGs2.indexOf(m)>=0;}))return false;}
+        if(overlayFilters.equipment.length>0&&overlayFilters.equipment.indexOf(ex.equipment_primary)<0)return false;
         return true;
-      }).sort(function(a,b){return a.name<b.name?-1:1;});
-      var closeFn=function(){setBuilderAddingTo(null);setBuilderOverlayShowAll(false);};
+      }
+
+      // Volume data (available in PlanView scope: bHS from computeBuilderCoverage)
+      var groupSets=rollupBuilderVolume(builderSessions,"group");
+
+      // Group MAV / MEV / MRV derived from per-head MUSCLE_HEAD_TARGETS (no new constants)
+      function getGroupMav(g){return getHeadsForGroup(g).reduce(function(s,hid){return s+headGoalTarget(hid);},0);}
+      function getGroupMev(g){return getHeadsForGroup(g).reduce(function(s,hid){var t=MUSCLE_HEAD_TARGETS[hid];return s+(t?t.mev:0);},0);}
+      function getGroupMrv(g){return getHeadsForGroup(g).reduce(function(s,hid){var t=MUSCLE_HEAD_TARGETS[hid];return s+(t?t.mrv:0);},0);}
+
+      // Head dot status: 'red' | 'amber' | 'green'
+      function headDotStatus(headId){
+        var t=MUSCLE_HEAD_TARGETS[headId];if(!t)return "green";
+        var hs=bHS[headId]||0;
+        if(hs<t.mev)return "red";
+        if(hs>=t.mrv)return "amber";
+        return "green";
+      }
+
+      // Build group→head→[exercises] map from filtered exercises
+      var OV_GROUPS=Object.keys(MUSCLE_TARGETS);
+      var groupHeadMap={};
+      OV_GROUPS.forEach(function(g){
+        var hids=getHeadsForGroup(g);
+        groupHeadMap[g]={};
+        hids.forEach(function(hid){groupHeadMap[g][hid]=[];});
+      });
+      (allEx||[]).filter(passesFilter).forEach(function(ex){
+        var sg=getStrongestHead(ex.muscles);if(!sg)return;
+        var g=MUSCLE_HEAD_TO_GROUP[sg.muscle_id];if(!g||!groupHeadMap[g])return;
+        if(!groupHeadMap[g][sg.muscle_id])groupHeadMap[g][sg.muscle_id]=[];
+        groupHeadMap[g][sg.muscle_id].push({ex:ex,tieCount:sg.tieCount});
+      });
+
+      // Accordion open/close helpers
+      function isGroupOpen(g){
+        if(overlayFilters.muscle.length===1&&overlayFilters.muscle[0]===g)return true;
+        return !!overlayGroupOpen[g];
+      }
+      function isHeadOpen(headId){
+        var g=MUSCLE_HEAD_TO_GROUP[headId];
+        if(overlayFilters.muscle.length===1&&overlayFilters.muscle[0]===g)return true;
+        return !!overlayHeadOpen[headId];
+      }
+
+      // Pill tap: open group + head + scroll into view
+      function scrollToHead(headId,g){
+        setOverlayGroupOpen(function(p){var n=Object.assign({},p);n[g]=true;return n;});
+        setOverlayHeadOpen(function(p){var n=Object.assign({},p);n[headId]=true;return n;});
+        setTimeout(function(){var el=overlayHeadRefsRef.current[headId];if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);
+      }
+
+      // Coverage strip: all heads that have ≥1 exercise in the catalog (unfiltered)
+      var headsWithEx={};
+      (allEx||[]).forEach(function(ex){var sg=getStrongestHead(ex.muscles);if(sg)headsWithEx[sg.muscle_id]=true;});
+      var pillHeads=Object.keys(MUSCLE_HEAD_TARGETS).filter(function(hid){return headsWithEx[hid];});
+      pillHeads.sort(function(a,b){
+        var ga=MUSCLE_HEAD_TO_GROUP[a]||"";var gb=MUSCLE_HEAD_TO_GROUP[b]||"";
+        var sa=headDotStatus(a);var sb=headDotStatus(b);
+        var order={"red":0,"amber":1,"green":2};
+        if(order[sa]!==order[sb])return order[sa]-order[sb];
+        return a<b?-1:1;
+      });
+      function headShortLabel(hid){return getHeadDisplayName(hid).split("(")[0].trim().toLowerCase();}
+
+      // Single exercise row (shared by all head buckets, PR#30 ⓘ preserved)
+      function renderExRow(ex,tieCount){
+        var eqIcon=EQUIP_ICON[ex.equipment_primary]||"•";
+        var fi=FATIGUE_INFO[ex.default_role]||{label:"—",color:C.dim};
+        var alreadyIn=sessRef.exercises.some(function(se){return se.exercise_id===ex.exercise_id;});
+        var capturedSessId=builderAddingTo;
+        var isExpanded=!!addOverlayExpanded[ex.exercise_id];
+        var hasCuesEx=orderedCueHeads(ex,userCues).length>0;
+        var hasAliases=ex.aliases&&ex.aliases.length>0;
+        var canExpand=hasCuesEx||hasAliases;
+        var sg=getStrongestHead(ex.muscles);
+        var headG=sg?MUSCLE_HEAD_TO_GROUP[sg.muscle_id]:null;
+        var showMrvChip=sg&&MUSCLE_HEAD_TARGETS[sg.muscle_id]&&(bHS[sg.muscle_id]||0)>=MUSCLE_HEAD_TARGETS[sg.muscle_id].mrv;
+        return h("div",{key:ex.exercise_id,style:{borderBottom:"1px solid "+C.border}},
+          h("div",{
+            onClick:function(){
+              if(alreadyIn){toast(ex.name+" already in this session");return;}
+              var defs=getExerciseDefaults(ex.default_role);
+              setBuilderSessions(function(p){return p.map(function(s){if(s.id!==capturedSessId)return s;return Object.assign({},s,{exercises:s.exercises.concat({exercise_id:ex.exercise_id,sets:defs.sets,reps:defs.reps})});});});
+              closeFn();toast(ex.name+" added to Session "+(sessIdx+1));
+            },
+            style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"10px 0",cursor:"pointer",opacity:alreadyIn?0.4:1,minHeight:44}
+          },
+            h("div",{style:{flex:1,minWidth:0}},
+              h("div",{style:{display:"flex",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:2}},
+                h("span",{style:{fontSize:12,fontWeight:600,color:C.white}},ex.name),
+                tieCount>1?h("span",{style:{fontSize:8,color:C.dim,background:C.dark,padding:"1px 4px",borderRadius:2}},"+"+( tieCount-1)+" head"):null,
+                showMrvChip?h("span",{style:{fontSize:8,color:C.orange,background:C.orange+"22",padding:"1px 5px",borderRadius:2,fontWeight:600}},"MRV"):null
+              ),
+              h("div",{style:{fontSize:10,color:C.dim}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," "))
+            ),
+            canExpand?h("span",{
+              onClick:function(e){e.stopPropagation();setAddOverlayExpanded(function(p){var n=Object.assign({},p);n[ex.exercise_id]=!p[ex.exercise_id];return n;});},
+              style:{fontSize:14,color:isExpanded?C.accent:C.dim,cursor:"pointer",padding:"6px 8px",lineHeight:1,flexShrink:0,marginLeft:4,userSelect:"none"}
+            },"ⓘ"):null,
+            h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:fi.color+"22",color:fi.color,fontWeight:600,flexShrink:0,marginLeft:8,marginTop:2}},fi.label)
+          ),
+          isExpanded?h("div",{style:{padding:"0 0 12px 0"}},
+            hasAliases?h("div",{style:{fontSize:10,color:C.dim,marginBottom:6}},ex.aliases.join(", ")):null,
+            hasCuesEx?h("div",null,
+              h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"),
+              renderCueBlock(ex)
+            ):null
+          ):null
+        );
+      }
+
+      // Two-level accordion: one group row
+      function renderGroupAccordion(g){
+        var headsInG=getHeadsForGroup(g);
+        var gMav=getGroupMav(g);
+        var open=isGroupOpen(g);
+        var totalEx=0;headsInG.forEach(function(hid){totalEx+=(groupHeadMap[g][hid]||[]).length;});
+        if(totalEx===0)return null;
+        var hasWarn=headsInG.some(function(hid){var s=headDotStatus(hid);return s==="red"||s==="amber";});
+        return h("div",{key:g,style:{borderBottom:"1px solid "+C.border}},
+          h("div",{onClick:function(){setOverlayGroupOpen(function(p){var n=Object.assign({},p);n[g]=!p[g];return n;});},
+            style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",cursor:"pointer",minHeight:44}},
+            h("div",{style:{display:"flex",alignItems:"center",gap:6}},
+              h("span",{style:{fontSize:12,fontWeight:700,color:C.white}},g),
+              h("span",{style:{fontSize:9,color:C.dim}},totalEx),
+              hasWarn?h("span",{style:{fontSize:11,color:C.orange,lineHeight:1}},"⚠"):null
+            ),
+            h("span",{style:{fontSize:10,color:C.dim}},open?"▲":"▼")
+          ),
+          open?h("div",null,
+            headsInG.map(function(headId){
+              var headExes=groupHeadMap[g][headId]||[];
+              if(headExes.length===0)return null;
+              var hs=bHS[headId]||0;
+              var dot=headDotStatus(headId);
+              var dotColor=dot==="red"?C.red:dot==="amber"?C.orange:C.green;
+              var headOpen=isHeadOpen(headId);
+              return h("div",{key:headId,
+                ref:function(el){overlayHeadRefsRef.current[headId]=el;},
+                style:{paddingLeft:12,borderTop:"1px solid "+C.border}
+              },
+                h("div",{onClick:function(){setOverlayHeadOpen(function(p){var n=Object.assign({},p);n[headId]=!p[headId];return n;});},
+                  style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",cursor:"pointer",minHeight:36}},
+                  h("div",{style:{display:"flex",alignItems:"center",gap:5}},
+                    h("span",{style:{width:6,height:6,borderRadius:"50%",background:dotColor,display:"inline-block",flexShrink:0}}),
+                    h("span",{style:{fontSize:11,color:C.grey,fontWeight:600}},getHeadDisplayName(headId)),
+                    h("span",{style:{fontSize:9,color:C.dim}},Math.round(hs*10)/10+"/"+Math.round((MUSCLE_HEAD_TARGETS[headId]&&MUSCLE_HEAD_TARGETS[headId].mav)||0))
+                  ),
+                  h("div",{style:{display:"flex",alignItems:"center",gap:4}},
+                    h("span",{style:{fontSize:9,color:C.dim}},headExes.length),
+                    h("span",{style:{fontSize:9,color:C.dim}},headOpen?"▲":"▼")
+                  )
+                ),
+                headOpen?h("div",{style:{paddingLeft:12}},
+                  headExes.map(function(item){return renderExRow(item.ex,item.tieCount);})
+                ):null
+              );
+            })
+          ):null
+        );
+      }
+
+      var overlayEmpty=allEx&&OV_GROUPS.every(function(g){
+        return getHeadsForGroup(g).every(function(hid){return(groupHeadMap[g][hid]||[]).length===0;});
+      });
+
       return h("div",{style:{position:"fixed",inset:0,zIndex:400}},
         h("div",{onClick:closeFn,style:{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)"}}),
         h("div",{style:{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:C.card,borderTop:"2px solid "+C.border,borderRadius:"12px 12px 0 0",padding:"16px 16px 32px",maxHeight:"85vh",overflowY:"auto"}},
@@ -2088,60 +2322,39 @@ function App(){
             h("div",{onClick:closeFn,style:{fontSize:20,color:C.dim,cursor:"pointer",padding:"4px 8px",lineHeight:1}},"×")
           ),
           h("input",{type:"text",placeholder:"Search exercises...",value:catalogSearch,onChange:function(e){setCatalogSearch(e.target.value);},style:Object.assign({},S.input,{width:"100%",padding:"8px 10px",fontSize:12,marginBottom:8})}),
+          // Coverage strip — pills sorted red→amber→neutral then alpha
+          pillHeads.length>0?h("div",{style:{display:"flex",gap:5,overflowX:"auto",paddingBottom:6,marginBottom:8,scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}},
+            pillHeads.map(function(hid){
+              var g=MUSCLE_HEAD_TO_GROUP[hid]||"";
+              var dot=headDotStatus(hid);
+              var hs=bHS[hid]||0;
+              var pillClr=dot==="red"?C.red:dot==="amber"?C.orange:C.green;
+              return h("div",{key:hid,onClick:function(){scrollToHead(hid,g);},
+                style:{flexShrink:0,padding:"3px 7px",borderRadius:20,border:"1px solid "+pillClr+"88",cursor:"pointer",fontSize:9,color:pillClr,fontWeight:700,whiteSpace:"nowrap",background:pillClr+"11"}
+              },headShortLabel(hid)+" "+Math.round(hs*10)/10+"/"+Math.round((MUSCLE_HEAD_TARGETS[hid]&&MUSCLE_HEAD_TARGETS[hid].mav)||0));
+            })
+          ):null,
+          // Muscle group filter chips
+          h("div",{style:{display:"flex",gap:4,overflowX:"auto",paddingBottom:4,marginBottom:6,scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}},
+            Object.keys(MUSCLE_TARGETS).map(function(g){
+              var active=overlayFilters.muscle.indexOf(g)>=0;
+              return h("div",{key:g,onClick:function(){toggleOverlayFilter("muscle",g);},
+                style:{flexShrink:0,padding:"3px 8px",borderRadius:20,fontSize:9,fontWeight:active?700:400,color:active?C.bg:C.grey,background:active?C.accent:"transparent",border:"1px solid "+(active?C.accent:C.border),cursor:"pointer",whiteSpace:"nowrap"}
+              },g);
+            }),
+            anyOverlayFilter?h("div",{onClick:function(){setOverlayFilters({muscle:[],equipment:[]});},
+              style:{flexShrink:0,padding:"3px 8px",fontSize:9,color:C.accent,cursor:"pointer",whiteSpace:"nowrap",alignSelf:"center"}
+            },"Clear"):null
+          ),
           focusMuscles?h("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8}},
             h("span",{style:{fontSize:10,color:C.dim}},"Focus: "+focusMuscles.join(", ")),
             h("span",{onClick:function(){setBuilderOverlayShowAll(true);},style:{fontSize:10,color:C.accent,cursor:"pointer",textDecoration:"underline",flexShrink:0}},"Show all")
           ):null,
           !allEx?h("div",{style:{textAlign:"center",padding:24,color:C.dim,fontSize:11,letterSpacing:2}},"LOADING EXERCISES..."):null,
-          overlayEx.length===0&&allEx?h("div",{style:{textAlign:"center",padding:24,color:C.dim,fontSize:12}},
-            "No exercises match.",h("span",{onClick:function(){setBuilderOverlayShowAll(true);},style:{color:C.accent,cursor:"pointer",textDecoration:"underline",marginLeft:4}},"Show all")
+          overlayEmpty?h("div",{style:{textAlign:"center",padding:24,color:C.dim,fontSize:12}},
+            "No exercises match.",h("span",{onClick:function(){setBuilderOverlayShowAll(true);setOverlayFilters({muscle:[],equipment:[]});},style:{color:C.accent,cursor:"pointer",textDecoration:"underline",marginLeft:4}},"Show all")
           ):null,
-          overlayEx.map(function(ex){
-            var eqIcon=EQUIP_ICON[ex.equipment_primary]||"•";
-            var groups=getMuscleGroupsForExercise(ex.muscles);
-            var primaryGroup=groups[0]||"—";
-            var fi=FATIGUE_INFO[ex.default_role]||{label:"—",color:C.dim};
-            var alreadyIn=sessRef.exercises.some(function(se){return se.exercise_id===ex.exercise_id;});
-            var capturedSessId=builderAddingTo;
-            var topHeads=getTopPrimaryHeads(ex.muscles,2);
-            var isExpanded=!!addOverlayExpanded[ex.exercise_id];
-            var hasCuesEx=orderedCueHeads(ex,userCues).length>0;
-            var hasAliases=ex.aliases&&ex.aliases.length>0;
-            var canExpand=hasCuesEx||hasAliases;
-            return h("div",{key:ex.exercise_id,style:{borderBottom:"1px solid "+C.border}},
-              h("div",{
-                onClick:function(){
-                  if(alreadyIn){toast(ex.name+" already in this session");return;}
-                  var defs=getExerciseDefaults(ex.default_role);
-                  setBuilderSessions(function(p){return p.map(function(s){if(s.id!==capturedSessId)return s;return Object.assign({},s,{exercises:s.exercises.concat({exercise_id:ex.exercise_id,sets:defs.sets,reps:defs.reps})});});});
-                  closeFn();toast(ex.name+" added to Session "+(sessIdx+1));
-                },
-                style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"10px 0",cursor:"pointer",opacity:alreadyIn?0.4:1,minHeight:44}
-              },
-                h("div",{style:{flex:1,minWidth:0}},
-                  h("div",{style:{fontSize:12,fontWeight:600,color:C.white,marginBottom:2}},ex.name),
-                  h("div",{style:{fontSize:10,color:C.dim,marginBottom:topHeads.length>0?4:0}},eqIcon+" "+(ex.equipment_primary||"").replace(/_/g," ")+" · "+primaryGroup),
-                  topHeads.length>0?h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
-                    topHeads.map(function(headId){
-                      return h("span",{key:headId,style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:C.accent+"22",color:C.accent,fontWeight:600}},getHeadDisplayName(headId));
-                    })
-                  ):null
-                ),
-                canExpand?h("span",{
-                  onClick:function(e){e.stopPropagation();setAddOverlayExpanded(function(p){var n=Object.assign({},p);n[ex.exercise_id]=!p[ex.exercise_id];return n;});},
-                  style:{fontSize:14,color:isExpanded?C.accent:C.dim,cursor:"pointer",padding:"6px 8px",lineHeight:1,flexShrink:0,marginLeft:4,userSelect:"none"}
-                },"ⓘ"):null,
-                h("span",{style:{fontSize:9,padding:"2px 6px",borderRadius:3,background:fi.color+"22",color:fi.color,fontWeight:600,flexShrink:0,marginLeft:8,marginTop:2}},fi.label)
-              ),
-              isExpanded?h("div",{style:{padding:"0 0 12px 0"}},
-                hasAliases?h("div",{style:{fontSize:10,color:C.dim,marginBottom:6}},ex.aliases.join(", ")):null,
-                hasCuesEx?h("div",null,
-                  h("div",{style:{fontSize:9,color:C.dim,letterSpacing:1,marginBottom:4}},"COACHING CUES"),
-                  renderCueBlock(ex)
-                ):null
-              ):null
-            );
-          })
+          allEx?OV_GROUPS.map(renderGroupAccordion):null
         )
       );
     }
