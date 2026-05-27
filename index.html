@@ -698,7 +698,7 @@ function computeOverloadWarnings(sessions,headSetsBySession){
 
 var EMPHASIS_TO_GROUPS={
   Chest:["Chest"],Back:["Back"],Shoulders:["Shoulders"],
-  Legs:["Quads","Hamstrings","Glutes","Calves"],
+  Legs:["Quads","Hamstrings","Glutes","Calves","Core"],
   Arms:["Biceps","Triceps"]
 };
 
@@ -708,7 +708,8 @@ function generateAutoPlan(inputs,exerciseDB,seed){
   var emphasis=inputs.emphasis;
   var equipment=inputs.equipment||[];
   var warnings=[];
-
+  function mulberry32(a){return function(){a=(a+0x6D2B79F5)|0;var t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;};}
+  var rng=mulberry32(seed||12345);
   // Pass A — volume budget per head
   var headVolumeTargets={};
   Object.keys(MUSCLE_HEAD_TARGETS).forEach(function(headId){
@@ -728,8 +729,6 @@ function generateAutoPlan(inputs,exerciseDB,seed){
   // Pass B — exercise selection per head
   var selectedExercises=[];
   var patternCount={};
-  var _rngX=seed||12345;
-  function rng(){_rngX=Math.sin(_rngX)*10000;return _rngX-Math.floor(_rngX);}
 
   Object.keys(headVolumeTargets).forEach(function(headId){
     var target=headVolumeTargets[headId];
@@ -744,16 +743,14 @@ function generateAutoPlan(inputs,exerciseDB,seed){
       warnings.push("No exercises for "+(ht?ht.display:headId)+" with selected equipment");
       return;
     }
-    candidates.sort(function(a,b){
-      var wa=(a.muscles||[]).find(function(m){return m.muscle_id===headId;});
-      var wb=(b.muscles||[]).find(function(m){return m.muscle_id===headId;});
-      var wva=wa?wa.weight:0;var wvb=wb?wb.weight:0;
-      if(wvb!==wva)return wvb-wva;
-      var ra=(patternCount[a.movement_pattern_primary]||0);
-      var rb=(patternCount[b.movement_pattern_primary]||0);
-      if(ra!==rb)return ra-rb;
-      return rng()-0.5;
+    candidates.forEach(function(ex){
+      var w=(ex.muscles||[]).find(function(m){return m.muscle_id===headId;});
+      var weightOnHead=w?w.weight:0;
+      var patternRarity=-(patternCount[ex.movement_pattern_primary]||0);
+      ex._score=weightOnHead*1000+patternRarity*10+rng();
     });
+    candidates.sort(function(a,b){return b._score-a._score;});
+    candidates.forEach(function(ex){delete ex._score;});
     var defs1=BUILDER_ROLE_DEFAULTS[candidates[0].default_role]||{sets:3,reps:"8-12"};
     var w1=(candidates[0].muscles||[]).find(function(m){return m.muscle_id===headId;});
     var contrib1=defs1.sets*(w1?w1.weight:1);
