@@ -677,6 +677,143 @@ function rollupBuilderVolume(sessions,groupBy){
   return headTotals;
 }
 
+// headSets must be passed explicitly (no closure). Returns 'red'|'amber'|'green'.
+function headDotStatus(headId,headSets){
+  var t=MUSCLE_HEAD_TARGETS[headId];if(!t)return "green";
+  var hs=(headSets&&headSets[headId])||0;
+  if(hs<t.mev)return "red";
+  if(hs>=t.mrv)return "amber";
+  return "green";
+}
+
+function computeOverloadWarnings(sessions,headSetsBySession){
+  var warns=[];
+  (headSetsBySession||[]).forEach(function(sh,si){
+    Object.keys(sh).forEach(function(headId){
+      if(sh[headId]>=8){warns.push({sessionIndex:si,headId:headId,sets:sh[headId]});}
+    });
+  });
+  return warns;
+}
+
+var EMPHASIS_TO_GROUPS={
+  Chest:["Chest"],Back:["Back"],Shoulders:["Shoulders"],
+  Legs:["Quads","Hamstrings","Glutes","Calves"],
+  Arms:["Biceps","Triceps"]
+};
+
+function generateAutoPlan(inputs,exerciseDB,seed){
+  var sessPerWeek=inputs.sessionsPerWeek;
+  var experience=inputs.experience;
+  var emphasis=inputs.emphasis;
+  var equipment=inputs.equipment||[];
+  var warnings=[];
+
+  // Pass A — volume budget per head
+  var headVolumeTargets={};
+  Object.keys(MUSCLE_HEAD_TARGETS).forEach(function(headId){
+    var t=MUSCLE_HEAD_TARGETS[headId];
+    var target;
+    if(experience==="beginner")target=t.mev;
+    else if(experience==="advanced")target=t.mav;
+    else target=(t.mev+t.mav)/2;
+    if(emphasis){
+      var emphGroups=EMPHASIS_TO_GROUPS[emphasis]||[];
+      var headGroup=MUSCLE_HEAD_TO_GROUP[headId];
+      if(emphGroups.indexOf(headGroup)>=0)target=Math.min(target*1.3,t.mrv*0.95);
+    }
+    if(target>0)headVolumeTargets[headId]=target;
+  });
+
+  // Pass B — exercise selection per head
+  var selectedExercises=[];
+  var patternCount={};
+  var _rngX=seed||12345;
+  function rng(){_rngX=Math.sin(_rngX)*10000;return _rngX-Math.floor(_rngX);}
+
+  Object.keys(headVolumeTargets).forEach(function(headId){
+    var target=headVolumeTargets[headId];
+    var candidates=Object.values(exerciseDB||{}).filter(function(ex){
+      var sg=getStrongestHead(ex.muscles);
+      if(!sg||sg.muscle_id!==headId)return false;
+      if(equipment.length>0&&equipment.indexOf(ex.equipment_primary)<0)return false;
+      return true;
+    });
+    if(!candidates.length){
+      var ht=MUSCLE_HEAD_TARGETS[headId];
+      warnings.push("No exercises for "+(ht?ht.display:headId)+" with selected equipment");
+      return;
+    }
+    candidates.sort(function(a,b){
+      var wa=(a.muscles||[]).find(function(m){return m.muscle_id===headId;});
+      var wb=(b.muscles||[]).find(function(m){return m.muscle_id===headId;});
+      var wva=wa?wa.weight:0;var wvb=wb?wb.weight:0;
+      if(wvb!==wva)return wvb-wva;
+      var ra=(patternCount[a.movement_pattern_primary]||0);
+      var rb=(patternCount[b.movement_pattern_primary]||0);
+      if(ra!==rb)return ra-rb;
+      return rng()-0.5;
+    });
+    var defs1=BUILDER_ROLE_DEFAULTS[candidates[0].default_role]||{sets:3,reps:"8-12"};
+    var w1=(candidates[0].muscles||[]).find(function(m){return m.muscle_id===headId;});
+    var contrib1=defs1.sets*(w1?w1.weight:1);
+    var numPick=(contrib1<target*0.9&&candidates.length>1)?2:1;
+    var pickedHere=candidates.slice(0,numPick);
+    var totalContrib=0;
+    pickedHere.forEach(function(ex){
+      var d=BUILDER_ROLE_DEFAULTS[ex.default_role]||{sets:3,reps:"8-12"};
+      var w=(ex.muscles||[]).find(function(m){return m.muscle_id===headId;});
+      totalContrib+=d.sets*(w?w.weight:1);
+    });
+    pickedHere.forEach(function(ex){
+      var d=BUILDER_ROLE_DEFAULTS[ex.default_role]||{sets:3,reps:"8-12"};
+      var sets=d.sets;
+      if(numPick===1){
+        if(totalContrib<target*0.9)sets=Math.min(5,sets+1);
+        else if(totalContrib>target*1.1)sets=Math.max(2,sets-1);
+      }
+      patternCount[ex.movement_pattern_primary]=(patternCount[ex.movement_pattern_primary]||0)+1;
+      selectedExercises.push({exercise_id:ex.exercise_id,sets:sets,reps:d.reps,default_role:ex.default_role,targetHead:headId});
+    });
+  });
+
+  // Pass C — distribute across sessions
+  var sessions=[];
+  for(var si=0;si<sessPerWeek;si++)sessions.push({id:"auto_"+si+"_"+(seed||Date.now()),focus:"none",customMuscles:[],exercises:[],_fat:0});
+  var fatigueWeights={main_compound:3,secondary_compound:2,accessory:1.5,isolation:1};
+  selectedExercises.forEach(function(se){
+    var fw=fatigueWeights[se.default_role]||1;
+    var exRow=exerciseDB[se.exercise_id];
+    var pattern=exRow?exRow.movement_pattern_primary:null;
+    var sorted=sessions.slice().sort(function(a,b){
+      var aH=a.exercises.filter(function(x){var r=exerciseDB[x.exercise_id];var s=r?getStrongestHead(r.muscles):null;return s&&s.muscle_id===se.targetHead;}).length;
+      var bH=b.exercises.filter(function(x){var r=exerciseDB[x.exercise_id];var s=r?getStrongestHead(r.muscles):null;return s&&s.muscle_id===se.targetHead;}).length;
+      if(aH!==bH)return aH-bH;
+      if(a._fat!==b._fat)return a._fat-b._fat;
+      var ap=a.exercises.some(function(x){var r=exerciseDB[x.exercise_id];return r&&r.movement_pattern_primary===pattern;});
+      var bp=b.exercises.some(function(x){var r=exerciseDB[x.exercise_id];return r&&r.movement_pattern_primary===pattern;});
+      return ap&&!bp?-1:bp&&!ap?1:0;
+    });
+    var tgt=sorted[0];
+    if(tgt.exercises.length>=7){var sf=sessions.slice().sort(function(a,b){return a._fat-b._fat;});tgt=sf[0];}
+    tgt.exercises.push({exercise_id:se.exercise_id,sets:se.sets,reps:se.reps});
+    tgt._fat+=fw*se.sets;
+  });
+  var pOrder={squat:0,hinge:1,lunge_split:2,horizontal_push:3,vertical_push:4,elbow_extension:5,shoulder_abduction:6,horizontal_pull:7,vertical_pull:8,elbow_flexion:9,spinal_extension:10,knee_extension:11,knee_flexion:12,ankle_plantarflexion:13};
+  sessions.forEach(function(sess){
+    sess.exercises.sort(function(a,b){
+      var ra=exerciseDB[a.exercise_id];var rb=exerciseDB[b.exercise_id];
+      var pa=ra&&pOrder[ra.movement_pattern_primary]!==undefined?pOrder[ra.movement_pattern_primary]:99;
+      var pb=rb&&pOrder[rb.movement_pattern_primary]!==undefined?pOrder[rb.movement_pattern_primary]:99;
+      return pa-pb;
+    });
+    delete sess._fat;
+  });
+  var totalSets=selectedExercises.reduce(function(s,se){return s+se.sets;},0);
+  if(sessPerWeek>0&&(totalSets/sessPerWeek)>30)warnings.push("Average of "+Math.round(totalSets/sessPerWeek)+" sets/session is high — consider reducing emphasis.");
+  return {sessions:sessions,warnings:warnings};
+}
+
 function AuthScreen(){
   var emailArr=useState("");var email=emailArr[0];var setEmail=emailArr[1];
   var passArr=useState("");var pass=passArr[0];var setPass=passArr[1];
@@ -908,6 +1045,9 @@ function App(){
   var overlayGroupOpenArr=useState({});var overlayGroupOpen=overlayGroupOpenArr[0];var setOverlayGroupOpen=overlayGroupOpenArr[1];
   var overlayHeadOpenArr=useState({});var overlayHeadOpen=overlayHeadOpenArr[0];var setOverlayHeadOpen=overlayHeadOpenArr[1];
   var overlayFiltersArr=useState({muscle:[],equipment:[]});var overlayFilters=overlayFiltersArr[0];var setOverlayFilters=overlayFiltersArr[1];
+  var apOpenArr=useState(false);var autoPlanOpen=apOpenArr[0];var setAutoPlanOpen=apOpenArr[1];
+  var apInputsArr=useState(null);var autoPlanInputs=apInputsArr[0];var setAutoPlanInputs=apInputsArr[1];
+  var apPreviewArr=useState(null);var autoPlanPreview=apPreviewArr[0];var setAutoPlanPreview=apPreviewArr[1];
   var overlayHeadRefsRef=useRef({});
 
   function toast(msg,type){
@@ -2025,13 +2165,11 @@ function App(){
             );
           }),
           (function(){
-            var warns=[];
-            (bHSS||[]).forEach(function(sh,si){
-              Object.keys(sh).forEach(function(headId){
-                if(sh[headId]>=8){var t=MUSCLE_HEAD_TARGETS[headId];warns.push(h("div",{key:headId+si,style:{fontSize:9,color:C.orange,marginTop:4}},"⚠️ Sess "+(si+1)+": "+(t?t.display:headId)+" — "+Math.round(sh[headId]*10)/10+" eff. sets in one session"));}
-              });
-            });
-            return warns.length?h("div",{style:{marginTop:8}},warns):null;
+            var warns=computeOverloadWarnings(builderSessions,bHSS||[]);
+            if(!warns.length)return null;
+            return h("div",{style:{marginTop:8}},
+              warns.map(function(w,wi){var t=MUSCLE_HEAD_TARGETS[w.headId];return h("div",{key:w.headId+w.sessionIndex+wi,style:{fontSize:9,color:C.orange,marginTop:4}},"⚠️ Sess "+(w.sessionIndex+1)+": "+(t?t.display:w.headId)+" — "+Math.round(w.sets*10)/10+" eff. sets in one session");})
+            );
           })(),
           (function(){
             var spacingWarns=computeSpacingWarnings(builderSessions,bHSS||[]);
@@ -2157,15 +2295,6 @@ function App(){
       function getGroupMev(g){return getHeadsForGroup(g).reduce(function(s,hid){var t=MUSCLE_HEAD_TARGETS[hid];return s+(t?t.mev:0);},0);}
       function getGroupMrv(g){return getHeadsForGroup(g).reduce(function(s,hid){var t=MUSCLE_HEAD_TARGETS[hid];return s+(t?t.mrv:0);},0);}
 
-      // Head dot status: 'red' | 'amber' | 'green'
-      function headDotStatus(headId){
-        var t=MUSCLE_HEAD_TARGETS[headId];if(!t)return "green";
-        var hs=bHS[headId]||0;
-        if(hs<t.mev)return "red";
-        if(hs>=t.mrv)return "amber";
-        return "green";
-      }
-
       // Build group→head→[exercises] map from filtered exercises
       var OV_GROUPS=Object.keys(MUSCLE_TARGETS);
       var groupHeadMap={};
@@ -2205,7 +2334,7 @@ function App(){
       var pillHeads=Object.keys(MUSCLE_HEAD_TARGETS).filter(function(hid){return headsWithEx[hid];});
       pillHeads.sort(function(a,b){
         var ga=MUSCLE_HEAD_TO_GROUP[a]||"";var gb=MUSCLE_HEAD_TO_GROUP[b]||"";
-        var sa=headDotStatus(a);var sb=headDotStatus(b);
+        var sa=headDotStatus(a,bHS);var sb=headDotStatus(b,bHS);
         var order={"red":0,"amber":1,"green":2};
         if(order[sa]!==order[sb])return order[sa]-order[sb];
         return a<b?-1:1;
@@ -2266,7 +2395,7 @@ function App(){
         var open=isGroupOpen(g);
         var totalEx=0;headsInG.forEach(function(hid){totalEx+=(groupHeadMap[g][hid]||[]).length;});
         if(totalEx===0)return null;
-        var hasWarn=headsInG.some(function(hid){var s=headDotStatus(hid);return s==="red"||s==="amber";});
+        var hasWarn=headsInG.some(function(hid){var s=headDotStatus(hid,bHS);return s==="red"||s==="amber";});
         return h("div",{key:g,style:{borderBottom:"1px solid "+C.border}},
           h("div",{onClick:function(){setOverlayGroupOpen(function(p){var n=Object.assign({},p);n[g]=!p[g];return n;});},
             style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",cursor:"pointer",minHeight:44}},
@@ -2282,7 +2411,7 @@ function App(){
               var headExes=groupHeadMap[g][headId]||[];
               if(headExes.length===0)return null;
               var hs=bHS[headId]||0;
-              var dot=headDotStatus(headId);
+              var dot=headDotStatus(headId,bHS);
               var dotColor=dot==="red"?C.red:dot==="amber"?C.orange:C.green;
               var headOpen=isHeadOpen(headId);
               return h("div",{key:headId,
@@ -2326,7 +2455,7 @@ function App(){
           pillHeads.length>0?h("div",{style:{display:"flex",gap:5,overflowX:"auto",paddingBottom:6,marginBottom:8,scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}},
             pillHeads.map(function(hid){
               var g=MUSCLE_HEAD_TO_GROUP[hid]||"";
-              var dot=headDotStatus(hid);
+              var dot=headDotStatus(hid,bHS);
               var hs=bHS[hid]||0;
               var pillClr=dot==="red"?C.red:dot==="amber"?C.orange:C.green;
               return h("div",{key:hid,onClick:function(){scrollToHead(hid,g);},
@@ -2391,6 +2520,172 @@ function App(){
       );
     }
 
+    function renderAutoPlanInputsSheet(){
+      if(!autoPlanOpen||!autoPlanInputs)return null;
+      var inp=autoPlanInputs;
+      var allEquipKeys=Object.keys(EQUIP_ICON).filter(function(k){return k!=="none";});
+      var noEquip=!inp.equipment||!inp.equipment.length;
+      function runGenerate(){
+        if(noEquip){toast("Select at least one equipment type","error");return;}
+        var seed=Date.now();
+        var result=generateAutoPlan(inp,gExerciseDB||{},seed);
+        var proposedBHSS=result.sessions.map(function(sess){return rollupBuilderVolume([sess],"head");});
+        computeSpacingWarnings(result.sessions,proposedBHSS).forEach(function(w){
+          result.warnings.push("⚠️ "+w.displayName+" in Sessions "+w.sessionI+"+"+w.sessionJ+" (~"+w.gapHours+"h apart, needs "+w.recoveryHours+"h)");
+        });
+        computeDistributionWarnings(result.sessions,proposedBHSS).forEach(function(w){
+          result.warnings.push("⚠️ "+w.displayName+" uneven across sessions ("+w.setsStr+")");
+        });
+        computeOverloadWarnings(result.sessions,proposedBHSS).forEach(function(w){
+          var t=MUSCLE_HEAD_TARGETS[w.headId];
+          result.warnings.push("⚠️ Session "+(w.sessionIndex+1)+": "+(t?t.display:w.headId)+" has "+Math.round(w.sets*10)/10+" eff. sets (high)");
+        });
+        setAutoPlanPreview({sessions:result.sessions,warnings:result.warnings,seed:seed,inputs:inp});
+      }
+      return h("div",{style:{position:"fixed",inset:0,zIndex:500}},
+        h("div",{onClick:function(){setAutoPlanOpen(false);},style:{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)"}}),
+        h("div",{style:{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:C.card,borderTop:"2px solid "+C.border,borderRadius:"12px 12px 0 0",padding:"16px 16px 32px",maxHeight:"85vh",overflowY:"auto"}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+            h("div",{style:{fontSize:13,fontWeight:700,color:C.white}},"Auto-Plan Your Week"),
+            h("div",{onClick:function(){setAutoPlanOpen(false);},style:{fontSize:20,color:C.dim,cursor:"pointer",padding:"4px 8px",lineHeight:1}},"×")
+          ),
+          h("div",{style:{marginBottom:16}},
+            h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"SESSIONS / WEEK"),
+            h("div",{style:{display:"flex",gap:4}},
+              [3,4,5,6,7].map(function(n){
+                var active=inp.sessionsPerWeek===n;
+                return h("div",{key:n,onClick:function(){setAutoPlanInputs(function(p){return Object.assign({},p,{sessionsPerWeek:n});});},
+                  style:{flex:1,padding:"8px 4px",textAlign:"center",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:active?700:400,background:active?C.accent+"22":"transparent",border:"1px solid "+(active?C.accent:C.border),color:active?C.accent:C.grey}
+                },n);
+              })
+            )
+          ),
+          h("div",{style:{marginBottom:16}},
+            h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"EXPERIENCE LEVEL"),
+            h("div",{style:{display:"flex",gap:4}},
+              ["beginner","intermediate","advanced"].map(function(e){
+                var active=inp.experience===e;
+                return h("div",{key:e,onClick:function(){setAutoPlanInputs(function(p){return Object.assign({},p,{experience:e});});},
+                  style:{flex:1,padding:"8px 4px",textAlign:"center",borderRadius:4,cursor:"pointer",fontSize:10,fontWeight:active?700:400,letterSpacing:1,background:active?C.accent+"22":"transparent",border:"1px solid "+(active?C.accent:C.border),color:active?C.accent:C.grey}
+                },e.toUpperCase());
+              })
+            )
+          ),
+          h("div",{style:{marginBottom:16}},
+            h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1,marginBottom:8}},"GOAL EMPHASIS"),
+            h("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},
+              [null,"Chest","Back","Shoulders","Legs","Arms"].map(function(e){
+                var active=inp.emphasis===e;
+                var label=e===null?"None":e;
+                return h("div",{key:label,onClick:function(){setAutoPlanInputs(function(p){return Object.assign({},p,{emphasis:e});});},
+                  style:{padding:"6px 10px",borderRadius:20,cursor:"pointer",fontSize:10,fontWeight:active?700:400,background:active?C.accent+"22":"transparent",border:"1px solid "+(active?C.accent:C.border),color:active?C.accent:C.grey,flexShrink:0}
+                },label);
+              })
+            )
+          ),
+          h("div",{style:{marginBottom:20}},
+            h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
+              h("div",{style:{fontSize:10,color:C.dim,letterSpacing:1}},"EQUIPMENT"),
+              h("div",{style:{display:"flex",gap:8}},
+                h("span",{onClick:function(){setAutoPlanInputs(function(p){return Object.assign({},p,{equipment:allEquipKeys.slice()});});},style:{fontSize:9,color:C.accent,cursor:"pointer"}},"All"),
+                h("span",{onClick:function(){setAutoPlanInputs(function(p){return Object.assign({},p,{equipment:[]});});},style:{fontSize:9,color:C.dim,cursor:"pointer"}},"None")
+              )
+            ),
+            h("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},
+              allEquipKeys.map(function(k){
+                var active=(inp.equipment||[]).indexOf(k)>=0;
+                return h("div",{key:k,onClick:function(){
+                  setAutoPlanInputs(function(p){
+                    var eq=p.equipment||[];
+                    var ne=eq.indexOf(k)>=0?eq.filter(function(x){return x!==k;}):eq.concat(k);
+                    return Object.assign({},p,{equipment:ne});
+                  });
+                },style:{padding:"5px 8px",borderRadius:20,cursor:"pointer",fontSize:9,background:active?C.accent+"22":"transparent",border:"1px solid "+(active?C.accent:C.border),color:active?C.accent:C.grey,flexShrink:0}},
+                  (EQUIP_ICON[k]||"•")+" "+k.replace(/_/g," "));
+              })
+            )
+          ),
+          h("div",{onClick:runGenerate,style:{padding:"14px",background:noEquip?C.dark:C.accent,color:noEquip?C.dim:C.bg,fontWeight:700,fontSize:13,textAlign:"center",borderRadius:6,cursor:noEquip?"not-allowed":"pointer",letterSpacing:2,border:"1px solid "+(noEquip?C.border:C.accent)}},"GENERATE PLAN")
+        )
+      );
+    }
+
+    function renderAutoPlanPreviewSheet(){
+      if(!autoPlanPreview)return null;
+      var prev=autoPlanPreview;
+      var prevHeadSets=rollupBuilderVolume(prev.sessions,"head");
+      var pillHds=Object.keys(MUSCLE_HEAD_TARGETS).filter(function(hid){
+        return prev.sessions.some(function(s){return s.exercises.some(function(se){var r=gExerciseDB&&gExerciseDB[se.exercise_id];var sg=r?getStrongestHead(r.muscles):null;return sg&&sg.muscle_id===hid;});});
+      });
+      pillHds.sort(function(a,b){
+        var order={"red":0,"amber":1,"green":2};
+        var sa=headDotStatus(a,prevHeadSets);var sb=headDotStatus(b,prevHeadSets);
+        if(order[sa]!==order[sb])return order[sa]-order[sb];
+        return a<b?-1:1;
+      });
+      function doRegenerate(){
+        var seed=Date.now();
+        var result=generateAutoPlan(prev.inputs,gExerciseDB||{},seed);
+        var proposedBHSS=result.sessions.map(function(sess){return rollupBuilderVolume([sess],"head");});
+        computeSpacingWarnings(result.sessions,proposedBHSS).forEach(function(w){result.warnings.push("⚠️ "+w.displayName+" in Sessions "+w.sessionI+"+"+w.sessionJ+" (~"+w.gapHours+"h apart, needs "+w.recoveryHours+"h)");});
+        computeDistributionWarnings(result.sessions,proposedBHSS).forEach(function(w){result.warnings.push("⚠️ "+w.displayName+" uneven across sessions ("+w.setsStr+")");});
+        computeOverloadWarnings(result.sessions,proposedBHSS).forEach(function(w){var t=MUSCLE_HEAD_TARGETS[w.headId];result.warnings.push("⚠️ Session "+(w.sessionIndex+1)+": "+(t?t.display:w.headId)+" has "+Math.round(w.sets*10)/10+" eff. sets (high)");});
+        setAutoPlanPreview({sessions:result.sessions,warnings:result.warnings,seed:seed,inputs:prev.inputs});
+      }
+      return h("div",{style:{position:"fixed",inset:0,zIndex:600}},
+        h("div",{onClick:function(){setAutoPlanPreview(null);},style:{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)"}}),
+        h("div",{style:{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:C.card,borderTop:"2px solid "+C.border,borderRadius:"12px 12px 0 0",padding:"16px 16px 32px",maxHeight:"85vh",overflowY:"auto"}},
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
+            h("div",{style:{fontSize:13,fontWeight:700,color:C.white}},"Preview Plan"),
+            h("div",{onClick:function(){setAutoPlanPreview(null);},style:{fontSize:20,color:C.dim,cursor:"pointer",padding:"4px 8px",lineHeight:1}},"×")
+          ),
+          pillHds.length>0?h("div",{style:{display:"flex",gap:5,overflowX:"auto",paddingBottom:6,marginBottom:8,scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}},
+            pillHds.map(function(hid){
+              var dot=headDotStatus(hid,prevHeadSets);
+              var pillClr=dot==="red"?C.red:dot==="amber"?C.orange:C.green;
+              var hs=prevHeadSets[hid]||0;
+              var mav=(MUSCLE_HEAD_TARGETS[hid]&&MUSCLE_HEAD_TARGETS[hid].mav)||0;
+              var shortLbl=getHeadDisplayName(hid).split("(")[0].trim().toLowerCase();
+              return h("div",{key:hid,style:{flexShrink:0,padding:"3px 7px",borderRadius:20,border:"1px solid "+pillClr+"88",fontSize:9,color:pillClr,fontWeight:700,whiteSpace:"nowrap",background:pillClr+"11"}},
+                shortLbl+" "+Math.round(hs*10)/10+"/"+mav);
+            })
+          ):null,
+          prev.warnings.length>0?h("div",{style:{background:C.orange+"18",border:"1px solid "+C.orange+"44",borderRadius:6,padding:"10px 12px",marginBottom:10}},
+            prev.warnings.map(function(w,wi){return h("div",{key:wi,style:{fontSize:10,color:C.orange,lineHeight:1.5,marginBottom:wi<prev.warnings.length-1?4:0}},w);})
+          ):null,
+          prev.sessions.map(function(sess,si){
+            return h("div",{key:sess.id,style:{marginBottom:8,background:C.bg,border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px"}},
+              h("div",{style:{fontSize:10,fontWeight:700,color:C.dim,letterSpacing:1,marginBottom:6}},"SESSION "+(si+1)),
+              sess.exercises.length===0?h("div",{style:{fontSize:11,color:C.dim}},"(empty)"):null,
+              sess.exercises.map(function(se,ei){
+                var row=gExerciseDB&&gExerciseDB[se.exercise_id];
+                var name=row?row.name:se.exercise_id;
+                return h("div",{key:se.exercise_id+"-"+ei,style:{display:"flex",alignItems:"center",gap:6,marginBottom:ei<sess.exercises.length-1?4:0,fontSize:11,color:C.white}},
+                  h("span",{style:{color:C.dim,fontWeight:700,flexShrink:0,minWidth:18}},se.sets+"×"),
+                  h("span",{style:{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},name),
+                  h("span",{style:{fontSize:9,color:C.dim,flexShrink:0}},se.reps)
+                );
+              })
+            );
+          }),
+          h("div",{style:{display:"flex",gap:8,marginTop:8}},
+            h("div",{onClick:function(){
+              var go=true;
+              if(builderSessions.length>0&&builderSessions.some(function(s){return s.exercises&&s.exercises.length>0;})){
+                go=confirm("Replace your current plan? Existing sessions will be lost.");
+              }
+              if(!go)return;
+              setBuilderSessions(prev.sessions);
+              setAutoPlanPreview(null);
+              setAutoPlanOpen(false);
+            },style:{flex:2,padding:"12px",background:C.accent,color:C.bg,fontWeight:700,fontSize:11,textAlign:"center",borderRadius:6,cursor:"pointer",letterSpacing:1}},"USE THIS PLAN"),
+            h("div",{onClick:doRegenerate,style:{flex:1,padding:"12px",background:C.dark,border:"1px solid "+C.border,color:C.white,fontWeight:700,fontSize:11,textAlign:"center",borderRadius:6,cursor:"pointer",letterSpacing:1}},"REGENERATE"),
+            h("div",{onClick:function(){setAutoPlanPreview(null);},style:{flex:1,padding:"12px",background:"transparent",border:"1px solid "+C.border,color:C.grey,fontWeight:400,fontSize:11,textAlign:"center",borderRadius:6,cursor:"pointer",letterSpacing:1}},"CANCEL")
+          )
+        )
+      );
+    }
+
     function renderBuilder(){
       var n=builderConfig.sessionsPerWeek;var goal=builderConfig.goal;
       return h("div",null,
@@ -2412,6 +2707,12 @@ function App(){
                 style:{flex:1,padding:"8px 4px",textAlign:"center",borderRadius:4,cursor:"pointer",fontSize:10,fontWeight:active?700:400,letterSpacing:1,background:active?C.accent+"22":"transparent",border:"1px solid "+(active?C.accent:C.border),color:active?C.accent:C.grey}
               },g.toUpperCase());
             })
+          ),
+          h("div",{style:{marginTop:10,display:"flex",justifyContent:"flex-end"}},
+            h("div",{onClick:function(){
+              setAutoPlanInputs({sessionsPerWeek:Math.max(3,builderSessions.length>0?builderSessions.length:builderConfig.sessionsPerWeek),experience:"intermediate",emphasis:null,equipment:Object.keys(EQUIP_ICON).filter(function(k){return k!=="none";})});
+              setAutoPlanOpen(true);
+            },style:{fontSize:10,color:C.accent,cursor:"pointer",fontWeight:700,letterSpacing:1,padding:"6px 10px",border:"1px solid "+C.accent+"55",borderRadius:4}},"AUTO-PLAN")
           )
         ),
         n<=3?h("div",{style:{borderLeft:"3px solid "+C.orange,padding:"8px 10px",background:C.orange+"10",borderRadius:"0 4px 4px 0",marginBottom:8,fontSize:11,color:C.orange}},
@@ -2420,7 +2721,9 @@ function App(){
         renderBuilderCoverage(),
         builderSessions.map(function(sess,idx){return renderBuilderSessionCard(sess,idx);}),
         renderBuilderAddOverlay(),
-        renderCustomFocusSheet()
+        renderCustomFocusSheet(),
+        renderAutoPlanInputsSheet(),
+        renderAutoPlanPreviewSheet()
       );
     }
 
