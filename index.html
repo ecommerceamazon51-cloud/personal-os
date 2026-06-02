@@ -231,6 +231,15 @@ var MUSCLE_HEAD_TARGETS={
   hip_flexors_iliopsoas:     {mev:2,mav:4, mrv:8, display:"Iliopsoas (Hip Flexors)"}
 };
 
+// Heads always trained indirectly by compound pressing/pulling — never need a
+// dedicated exercise, so suppress "no exercises in catalog" warnings for them.
+var INDIRECTLY_TRAINED_HEADS={
+  rotator_cuff_supraspinatus:1,
+  rotator_cuff_subscapularis:1,
+  rotator_cuff_infraspinatus:1,
+  rotator_cuff_teres_minor:1
+};
+
 // Module-level cache: exercise_id → exercises row. Populated by loadExerciseDB()
 // after auth. null = not yet loaded (or fetch failed); fall back to hardcoded muscles.
 var gExerciseDB=null;
@@ -739,8 +748,9 @@ function generateAutoPlan(inputs,exerciseDB,seed){
       return true;
     });
     if(!candidates.length){
+      if(INDIRECTLY_TRAINED_HEADS[headId])return;
       var ht=MUSCLE_HEAD_TARGETS[headId];
-      warnings.push("No exercises for "+(ht?ht.display:headId)+" with selected equipment");
+      warnings.push({category:"coverage",text:(ht?ht.display:headId)+" — no dedicated exercise in catalog (coverage gap)"});
       return;
     }
     candidates.forEach(function(ex){
@@ -807,7 +817,7 @@ function generateAutoPlan(inputs,exerciseDB,seed){
     delete sess._fat;
   });
   var totalSets=selectedExercises.reduce(function(s,se){return s+se.sets;},0);
-  if(sessPerWeek>0&&(totalSets/sessPerWeek)>30)warnings.push("Average of "+Math.round(totalSets/sessPerWeek)+" sets/session is high — consider reducing emphasis.");
+  if(sessPerWeek>0&&(totalSets/sessPerWeek)>30)warnings.push({category:"overload",text:"Average of "+Math.round(totalSets/sessPerWeek)+" sets/session is high — consider reducing emphasis."});
   return {sessions:sessions,warnings:warnings};
 }
 
@@ -1045,6 +1055,7 @@ function App(){
   var apOpenArr=useState(false);var autoPlanOpen=apOpenArr[0];var setAutoPlanOpen=apOpenArr[1];
   var apInputsArr=useState(null);var autoPlanInputs=apInputsArr[0];var setAutoPlanInputs=apInputsArr[1];
   var apPreviewArr=useState(null);var autoPlanPreview=apPreviewArr[0];var setAutoPlanPreview=apPreviewArr[1];
+  var warnExpArr=useState(false);var warnExpanded=warnExpArr[0];var setWarnExpanded=warnExpArr[1];
   var overlayHeadRefsRef=useRef({});
 
   function toast(msg,type){
@@ -2175,7 +2186,7 @@ function App(){
               h("div",{style:{fontSize:9,fontWeight:700,color:C.dim,letterSpacing:2,marginBottom:4}},"SPACING WARNINGS"),
               spacingWarns.map(function(w,wi){
                 return h("div",{key:wi,style:{fontSize:9,color:C.orange,marginBottom:3,lineHeight:1.4}},
-                  "⚠️ "+w.displayName+" is hit in Session "+w.sessionI+" and Session "+w.sessionJ+" (~"+w.gapHours+"h apart with "+builderSessions.length+" sessions/week). Needs ~"+w.recoveryHours+"h recovery."
+                  "⚠️ "+w.displayName+": sessions "+w.sessionI+" & "+w.sessionJ+" ~"+w.gapHours+"h apart, needs ~"+w.recoveryHours+"h recovery"
                 );
               })
             );
@@ -2528,15 +2539,16 @@ function App(){
         var result=generateAutoPlan(inp,gExerciseDB||{},seed);
         var proposedBHSS=result.sessions.map(function(sess){return rollupBuilderVolume([sess],"head");});
         computeSpacingWarnings(result.sessions,proposedBHSS).forEach(function(w){
-          result.warnings.push("⚠️ "+w.displayName+" in Sessions "+w.sessionI+"+"+w.sessionJ+" (~"+w.gapHours+"h apart, needs "+w.recoveryHours+"h)");
+          result.warnings.push({category:"spacing",text:"⚠️ "+w.displayName+": sessions "+w.sessionI+" & "+w.sessionJ+" ~"+w.gapHours+"h apart, needs ~"+w.recoveryHours+"h recovery"});
         });
         computeDistributionWarnings(result.sessions,proposedBHSS).forEach(function(w){
-          result.warnings.push("⚠️ "+w.displayName+" uneven across sessions ("+w.setsStr+")");
+          result.warnings.push({category:"distribution",text:"⚠️ "+w.displayName+" uneven across sessions ("+w.setsStr+")"});
         });
         computeOverloadWarnings(result.sessions,proposedBHSS).forEach(function(w){
           var t=MUSCLE_HEAD_TARGETS[w.headId];
-          result.warnings.push("⚠️ Session "+(w.sessionIndex+1)+": "+(t?t.display:w.headId)+" has "+Math.round(w.sets*10)/10+" eff. sets (high)");
+          result.warnings.push({category:"overload",text:"⚠️ Session "+(w.sessionIndex+1)+": "+(t?t.display:w.headId)+" has "+Math.round(w.sets*10)/10+" eff. sets (high)"});
         });
+        setWarnExpanded(false);
         setAutoPlanPreview({sessions:result.sessions,warnings:result.warnings,seed:seed,inputs:inp});
       }
       return h("div",{style:{position:"fixed",inset:0,zIndex:500}},
@@ -2624,9 +2636,10 @@ function App(){
         var seed=Date.now();
         var result=generateAutoPlan(prev.inputs,gExerciseDB||{},seed);
         var proposedBHSS=result.sessions.map(function(sess){return rollupBuilderVolume([sess],"head");});
-        computeSpacingWarnings(result.sessions,proposedBHSS).forEach(function(w){result.warnings.push("⚠️ "+w.displayName+" in Sessions "+w.sessionI+"+"+w.sessionJ+" (~"+w.gapHours+"h apart, needs "+w.recoveryHours+"h)");});
-        computeDistributionWarnings(result.sessions,proposedBHSS).forEach(function(w){result.warnings.push("⚠️ "+w.displayName+" uneven across sessions ("+w.setsStr+")");});
-        computeOverloadWarnings(result.sessions,proposedBHSS).forEach(function(w){var t=MUSCLE_HEAD_TARGETS[w.headId];result.warnings.push("⚠️ Session "+(w.sessionIndex+1)+": "+(t?t.display:w.headId)+" has "+Math.round(w.sets*10)/10+" eff. sets (high)");});
+        computeSpacingWarnings(result.sessions,proposedBHSS).forEach(function(w){result.warnings.push({category:"spacing",text:"⚠️ "+w.displayName+": sessions "+w.sessionI+" & "+w.sessionJ+" ~"+w.gapHours+"h apart, needs ~"+w.recoveryHours+"h recovery"});});
+        computeDistributionWarnings(result.sessions,proposedBHSS).forEach(function(w){result.warnings.push({category:"distribution",text:"⚠️ "+w.displayName+" uneven across sessions ("+w.setsStr+")"});});
+        computeOverloadWarnings(result.sessions,proposedBHSS).forEach(function(w){var t=MUSCLE_HEAD_TARGETS[w.headId];result.warnings.push({category:"overload",text:"⚠️ Session "+(w.sessionIndex+1)+": "+(t?t.display:w.headId)+" has "+Math.round(w.sets*10)/10+" eff. sets (high)"});});
+        setWarnExpanded(false);
         setAutoPlanPreview({sessions:result.sessions,warnings:result.warnings,seed:seed,inputs:prev.inputs});
       }
       return h("div",{style:{position:"fixed",inset:0,zIndex:600}},
@@ -2647,9 +2660,45 @@ function App(){
                 shortLbl+" "+Math.round(hs*10)/10+"/"+mav);
             })
           ):null,
-          prev.warnings.length>0?h("div",{style:{background:C.orange+"18",border:"1px solid "+C.orange+"44",borderRadius:6,padding:"10px 12px",marginBottom:10}},
-            prev.warnings.map(function(w,wi){return h("div",{key:wi,style:{fontSize:10,color:C.orange,lineHeight:1.5,marginBottom:wi<prev.warnings.length-1?4:0}},w);})
-          ):null,
+          prev.warnings.length>0?(function(){
+            var normalized=prev.warnings.map(function(w){
+              if(w&&typeof w==="object"&&w.category)return w;
+              return {category:"other",text:String(w)};
+            });
+            var cats=[];var catSeen={};
+            normalized.forEach(function(w){if(!catSeen[w.category]){catSeen[w.category]=1;cats.push(w.category);}});
+            var catLabels={spacing:"spacing",distribution:"distribution",overload:"overload",coverage:"coverage",other:"other"};
+            var count=normalized.length;
+            var summary=cats.map(function(c){return catLabels[c]||c;}).join(", ");
+            return h("div",{style:{marginBottom:10}},
+              h("div",{
+                onClick:function(){setWarnExpanded(function(e){return !e;});},
+                style:{background:C.orange+"18",border:"1px solid "+C.orange+"44",borderRadius:warnExpanded?"6px 6px 0 0":6,padding:"10px 12px",cursor:"pointer",userSelect:"none"}
+              },
+                h("div",{style:{fontSize:10,color:C.orange,lineHeight:1.5}},
+                  "⚠️ "+count+" "+(count===1?"warning":"warnings")+": "+summary+" "+(warnExpanded?"▾":"▸")
+                )
+              ),
+              warnExpanded?h("div",{style:{background:C.orange+"10",border:"1px solid "+C.orange+"44",borderTop:"none",borderBottomLeftRadius:6,borderBottomRightRadius:6,padding:"10px 12px"}},
+                (function(){
+                  var groups={};var groupOrder=[];
+                  normalized.forEach(function(w){
+                    if(!groups[w.category]){groups[w.category]=[];groupOrder.push(w.category);}
+                    groups[w.category].push(w.text);
+                  });
+                  var catHdrs={spacing:"SPACING",distribution:"DISTRIBUTION",overload:"OVERLOAD",coverage:"COVERAGE",other:"OTHER"};
+                  return groupOrder.map(function(cat,ci){
+                    return h("div",{key:cat,style:{marginBottom:ci<groupOrder.length-1?8:0}},
+                      h("div",{style:{fontSize:9,fontWeight:700,color:C.dim,letterSpacing:2,marginBottom:4}},catHdrs[cat]||cat.toUpperCase()),
+                      groups[cat].map(function(txt,ti){
+                        return h("div",{key:ti,style:{fontSize:10,color:C.orange,lineHeight:1.5,marginBottom:ti<groups[cat].length-1?4:0}},txt);
+                      })
+                    );
+                  });
+                })()
+              ):null
+            );
+          })():null,
           prev.sessions.map(function(sess,si){
             return h("div",{key:sess.id,style:{marginBottom:8,background:C.bg,border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px"}},
               h("div",{style:{fontSize:10,fontWeight:700,color:C.dim,letterSpacing:1,marginBottom:6}},"SESSION "+(si+1)),
