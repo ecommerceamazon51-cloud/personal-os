@@ -35,7 +35,7 @@ var LS={
   keys:function(){var r=[];for(var i=0;i<localStorage.length;i++)r.push(localStorage.key(i));return r}
 };
 
-function getToday(){return new Date().toISOString().split("T")[0]}
+function getToday(){var d=new Date();var m=d.getMonth()+1;var dy=d.getDate();return d.getFullYear()+"-"+(m<10?"0"+m:m)+"-"+(dy<10?"0"+dy:dy)}
 function getDayIdx(d){return d?new Date(d+"T12:00:00").getDay():new Date().getDay()}
 function addDays(ds,n){var d=new Date(ds+"T12:00:00");d.setDate(d.getDate()+n);return d.toISOString().split("T")[0]}
 function fmtTimer(s){var m=Math.floor(s/60),sec=s%60;return(m<10?"0":"")+m+":"+(sec<10?"0":"")+sec}
