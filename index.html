@@ -1125,13 +1125,28 @@ function App(){
     });
   }
 
+  function loadSubstitutes(){
+    if(gSubstitutes)return;
+    sb.from("exercise_substitutes").select("exercise_id,substitute_id,reason,similarity_score").then(function(r){
+      if(!r.data)return;
+      var counts={};var subs={};
+      r.data.forEach(function(row){
+        counts[row.exercise_id]=(counts[row.exercise_id]||0)+1;
+        if(!subs[row.exercise_id])subs[row.exercise_id]=[];
+        subs[row.exercise_id].push({substitute_id:row.substitute_id,substitute_reason:row.reason,similarity_score:row.similarity_score});
+      });
+      gSubstitutes=subs;
+      setCatalogSubCounts(counts);
+    });
+  }
+
   useEffect(function(){
     sb.auth.getSession().then(function(r){
-      if(r.data&&r.data.session){setUser(r.data.session.user);loadProfile(r.data.session.user.id);loadExerciseDB();}
+      if(r.data&&r.data.session){setUser(r.data.session.user);loadProfile(r.data.session.user.id);loadExerciseDB();loadSubstitutes();}
       else setAuthState("unauthed");
     });
     var authSub=sb.auth.onAuthStateChange(function(event,session){
-      if(event==="SIGNED_IN"&&session){setUser(session.user);loadProfile(session.user.id);loadExerciseDB();}
+      if(event==="SIGNED_IN"&&session){setUser(session.user);loadProfile(session.user.id);loadExerciseDB();loadSubstitutes();}
       if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setAuthState("unauthed");setHistData(null);setWlog({});setChecks({});setNutLog([]);setRecentFoods([]);setUserCues({});gExerciseDB=null;gSubstitutes=null;}
     });
     return function(){authSub.data.subscription.unsubscribe();};
@@ -1224,21 +1239,6 @@ function App(){
       setBwLoading(false);
     }).catch(function(){setBwLoading(false);});
   },[historyTab,user]);
-
-  useEffect(function(){
-    if(!user||view!=="plan"||Object.keys(catalogSubCounts).length>0)return;
-    sb.from("exercise_substitutes").select("exercise_id,substitute_id,reason,similarity_score").then(function(r){
-      if(!r.data)return;
-      var counts={};var subs={};
-      r.data.forEach(function(row){
-        counts[row.exercise_id]=(counts[row.exercise_id]||0)+1;
-        if(!subs[row.exercise_id])subs[row.exercise_id]=[];
-        subs[row.exercise_id].push({substitute_id:row.substitute_id,substitute_reason:row.reason,similarity_score:row.similarity_score});
-      });
-      gSubstitutes=subs;
-      setCatalogSubCounts(counts);
-    });
-  },[view,user]);
 
   var timerRemaining=timer?timer.remaining:-1;var timerActive=timer?timer.active:false;
   useEffect(function(){
