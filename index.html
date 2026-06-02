@@ -1444,7 +1444,9 @@ function App(){
 
   function saveNote(key,text){
     setNotesData(function(p){var n=Object.assign({},p);n[key]=text;return n;});
-    sb.from("notes").upsert({user_id:user.id,key:key,note:text,updated_at:new Date().toISOString()},{onConflict:"user_id,key"});
+    sb.from("notes").upsert({user_id:user.id,key:key,note:text,updated_at:new Date().toISOString()},{onConflict:"user_id,key"}).then(function(r){
+      if(r.error){console.error("saveNote failed",r.error);toast("Note save failed: "+r.error.message);}
+    });
   }
   function saveUserCue(exerciseId,muscleId,cueText){
     var existing=userCues[exerciseId]&&userCues[exerciseId][muscleId];
