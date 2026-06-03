@@ -179,7 +179,10 @@ DO $$ BEGIN
     'horizontal_pull', 'vertical_pull', 'lunge_split', 'carry',
     -- Isolation patterns (single-joint)
     'knee_flexion', 'knee_extension', 'elbow_flexion', 'elbow_extension',
-    'ankle_plantarflexion', 'shoulder_abduction',
+    'ankle_plantarflexion', 'ankle_eversion',
+    'shoulder_abduction', 'hip_abduction',
+    'neck_flexion', 'neck_extension',
+    'wrist_flexion', 'wrist_extension',
     -- Core / anti-patterns
     'rotation', 'anti_rotation', 'anti_extension', 'anti_lateral_flexion',
     -- Other
