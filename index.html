@@ -239,6 +239,9 @@ var INDIRECTLY_TRAINED_HEADS={
   rotator_cuff_infraspinatus:1,
   rotator_cuff_teres_minor:1
 };
+// Maps a flat MUSCLE_HEAD_TARGETS key to the split child keys used in exercise data.
+// Used only in the coverage-warning guard to suppress false gaps caused by key mismatch.
+var HEAD_SPLIT_MAP={adductors:["adductors_magnus","adductors_short"]};
 
 // Module-level cache: exercise_id → exercises row. Populated by loadExerciseDB()
 // after auth. null = not yet loaded (or fetch failed); fall back to hardcoded muscles.
@@ -749,6 +752,22 @@ function generateAutoPlan(inputs,exerciseDB,seed){
     });
     if(!candidates.length){
       if(INDIRECTLY_TRAINED_HEADS[headId])return;
+      // Suppress if headId trains as a tied-top head on any catalog exercise
+      // (tie-break artifact: getStrongestHead returns only the alphabetical winner).
+      var hasTiedCoverage=Object.values(exerciseDB||{}).some(function(ex){
+        var qualifying=(ex.muscles||[]).filter(function(m){return m.weight>=0.5;});
+        if(!qualifying.length)return false;
+        var topW=qualifying.reduce(function(best,m){return m.weight>best?m.weight:best;},0);
+        return qualifying.some(function(m){return m.muscle_id===headId&&m.weight===topW;});
+      });
+      if(hasTiedCoverage)return;
+      // Suppress if headId is a flat key whose split children are trained at >= 0.5
+      // (adductors key mismatch: MUSCLE_HEAD_TARGETS uses adductors, exercises use adductors_magnus/short).
+      var splitChildren=HEAD_SPLIT_MAP[headId]||[];
+      var hasSplitCoverage=splitChildren.length>0&&Object.values(exerciseDB||{}).some(function(ex){
+        return (ex.muscles||[]).some(function(m){return splitChildren.indexOf(m.muscle_id)>=0&&m.weight>=0.5;});
+      });
+      if(hasSplitCoverage)return;
       var ht=MUSCLE_HEAD_TARGETS[headId];
       warnings.push({category:"coverage",text:(ht?ht.display:headId)+" — no dedicated exercise in catalog (coverage gap)"});
       return;
